@@ -1,0 +1,46 @@
+# ===============================================================
+# Docker Ignore File for AgroConnect Backend
+# ===============================================================
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Local environment files
+*.env
+.env.*
+!*.prod.example
+
+# Logs
+*.log
+logs/
+tmp/
+
+# Database files
+*.sqlite3
+*.db
+
+# OS files
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Node (if frontend exists)
+node_modules/
+dist/
+
+# Uploads (should be mounted as volume, not baked into image)
+uploads/
+
+# IDE
+.vscode/
+.idea/

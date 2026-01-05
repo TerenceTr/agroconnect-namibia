@@ -1,28 +1,132 @@
-# Environment variables
+# ==============================================================================
+# .gitignore — AgroConnect Namibia (Monorepo)
+# ------------------------------------------------------------------------------
+# FILE ROLE:
+#   Prevent sensitive data, local machine artifacts, dependencies, caches, and
+#   generated build outputs from being committed to Git.
+#
+# WHAT SHOULD BE COMMITTED:
+#   ✅ Source code, configuration templates (*.example), migrations, docs
+#   ✅ Small static assets required to run (e.g., default images), if desired
+#
+# WHAT SHOULD NEVER BE COMMITTED:
+#   ❌ Real secrets (.env), local databases, node_modules, virtualenvs, caches,
+#     build artifacts, logs, OS/IDE noise, runtime uploads
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# Environment variables / secrets (never commit real secrets)
+# ------------------------------------------------------------------------------
 .env
+backend/.env
+ai_service/.env
+
+# Common dotenv variants (keep templates via negation rules below)
+.env.*
+backend/.env.*
+ai_service/.env.*
+
+# Keep example templates (safe to commit)
+!.env.example
+!backend/.env.example
+!ai_service/.env.example
+!*.env.example
+!*.env.sample
+!*.env.template
+!*.env.prod.example
+!*.env.production.example
+
+# CRA / Vite local env files (frontend)
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# Node modules
+
+# ------------------------------------------------------------------------------
+# Node / Frontend dependencies + tooling logs
+# ------------------------------------------------------------------------------
 node_modules/
+frontend/node_modules/
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
 
-# Backend uploads
-backend/uploads/
 
-# Python venv
-ai-service/venv/
+# ------------------------------------------------------------------------------
+# Frontend build outputs
+# ------------------------------------------------------------------------------
+frontend/build/
+frontend/dist/
+dist/
+build/
+
+
+# ------------------------------------------------------------------------------
+# Backend runtime uploads (user-generated content)
+# ------------------------------------------------------------------------------
+# If you want to keep a controlled "defaults" directory tracked (recommended),
+# ignore everything under uploads EXCEPT defaults (and optional .gitkeep).
+backend/uploads/*
+!backend/uploads/defaults/
+!backend/uploads/defaults/**
+!backend/uploads/.gitkeep
+
+
+# ------------------------------------------------------------------------------
+# Python virtualenvs + caches + test artifacts
+# ------------------------------------------------------------------------------
+.venv/
+venv/
+backend/.venv/
+backend/venv/
+
+ai_service/.venv/
+ai_service/venv/
+
 __pycache__/
-*.pyc
+*.py[cod]
 
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+pyright-report.json
+
+# Python packaging artifacts
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+
+# ------------------------------------------------------------------------------
+# Flask runtime folder
+# ------------------------------------------------------------------------------
+instance/
+
+
+# ------------------------------------------------------------------------------
 # Logs
+# ------------------------------------------------------------------------------
 *.log
 logs/
 
-# OS
+
+# ------------------------------------------------------------------------------
+# OS junk
+# ------------------------------------------------------------------------------
 .DS_Store
 Thumbs.db
+
+
+# ------------------------------------------------------------------------------
+# Editor / IDE (optional — remove these if you want to commit team settings)
+# ------------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~

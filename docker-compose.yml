@@ -1,0 +1,110 @@
+version: "3.9"
+
+# ====================================================================
+# AgroConnect Namibia — Full Stack
+# File: docker-compose.yml
+# ====================================================================
+
+services:
+  # ------------------------------------------------
+  # Backend (Flask + Gunicorn + Socket.IO)
+  # ------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agro_backend
+    restart: unless-stopped
+
+    env_file:
+      - backend/.env
+
+    environment:
+      FLASK_ENV: production
+      PYTHONPATH: /app
+
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+
+    ports:
+      - "5000:5000"
+
+    volumes:
+      - backend_uploads:/app/uploads
+
+    command: gunicorn -c gunicorn_config.py backend.wsgi:app
+
+  # ------------------------------------------------
+  # AI Service (FastAPI)
+  # ------------------------------------------------
+  ai_service:
+    build:
+      context: ./ai-service
+    container_name: agro_ai_service
+    restart: unless-stopped
+
+    env_file:
+      - ai-service/.env
+
+    depends_on:
+      redis:
+        condition: service_started
+
+    ports:
+      - "8001:8001"
+
+  # ------------------------------------------------
+  # PostgreSQL
+  # ------------------------------------------------
+  postgres:
+    image: postgres:16
+    container_name: agro_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agro
+      POSTGRES_PASSWORD: agro123
+      POSTGRES_DB: agroconnect
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # ------------------------------------------------
+  # Redis
+  # ------------------------------------------------
+  redis:
+    image: redis:7
+    container_name: agro_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  # ------------------------------------------------
+  # MinIO (S3-compatible storage)
+  # ------------------------------------------------
+  minio:
+    image: minio/minio
+    container_name: agro_minio
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+# ------------------------------------------------
+# Volumes
+# ------------------------------------------------
+volumes:
+  postgres_data:
+  redis_data:
+  backend_uploads:
+  minio_data:

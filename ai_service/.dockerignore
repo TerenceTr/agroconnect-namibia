@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------
+# ai_service/.dockerignore
+# FILE ROLE:
+#   Reduces Docker build context size and prevents secrets from being copied.
+# ---------------------------------------------------------------------
+
+__pycache__/
+*.py[cod]
+
+env/
+venv/
+.venv/
+dist/
+build/
+
+*.log
+.pnpm-debug.log
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.git/
+.DS_Store

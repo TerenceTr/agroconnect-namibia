@@ -1,0 +1,59 @@
+# =====================================================================
+# render.yaml — Valid Render Starter Deployment (No Schema Errors)
+# AgroConnect Backend — Flask + Gunicorn + PostgreSQL
+# =====================================================================
+
+services:
+  - type: web
+    name: agroconnect-backend
+    runtime: python
+    region: frankfurt
+    plan: starter
+
+    # ----------------------------------------------------------------
+    # Build Command (must be ONE STRING, not a list)
+    # We also run DB migrations here because postDeploy is not allowed.
+    # ----------------------------------------------------------------
+    buildCommand: >
+      pip install --upgrade pip &&
+      pip install -r requirements.txt &&
+      flask --app backend:create_app db upgrade
+
+    # ----------------------------------------------------------------
+    # Start Command (must be ONE STRING)
+    # ----------------------------------------------------------------
+    startCommand: gunicorn -c backend/gunicorn_config.py backend.wsgi:app
+
+    # Health check path
+    healthCheckPath: /health
+
+    # ----------------------------------------------------------------
+    # Environment Variables (must be ARRAY of objects)
+    # ----------------------------------------------------------------
+    envVars:
+      - key: FLASK_ENV
+        value: production
+
+      - key: PYTHON_VERSION
+        value: 3.11
+
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agroconnect-db
+          property: connectionString
+
+      # Secrets (add in Render Dashboard, not in repo)
+      - key: SECRET_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+
+      - key: CORS_ORIGINS
+        value: "*"
+
+# =====================================================================
+# Managed PostgreSQL Database
+# =====================================================================
+databases:
+  - name: agroconnect-db
+    region: frankfurt

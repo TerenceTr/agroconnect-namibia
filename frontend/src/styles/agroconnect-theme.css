@@ -1,0 +1,182 @@
+/* ==========================================================================
+   AgroConnect Admin Theme — Palette-based (Coolors)
+   Uses:
+     Earthy Forest Hues:  #DAD7CD #A3B18A #588157 #3A5A40 #344E41
+     Fresh Greens:        #D8F3DC #B7E4C7 #95D5B2 #74C69D #52B788
+                          #40916C #2D6A4F #1B4332 #081C15
+     Green Serenity:      #A1CCA5 #8FB996 #709775 #415D43 #111D13
+   ========================================================================== */
+
+:root {
+  /* Base surfaces */
+  --ac-bg: #081c15;
+  --ac-bg-2: #111d13;
+  --ac-panel: rgba(27, 67, 50, 0.40);     /* #1B4332 */
+  --ac-panel-2: rgba(45, 106, 79, 0.28);  /* #2D6A4F */
+  --ac-border: rgba(216, 243, 220, 0.14); /* #D8F3DC */
+
+  /* Text */
+  --ac-text: rgba(255,255,255,0.92);
+  --ac-muted: rgba(255,255,255,0.70);
+
+  /* Accents */
+  --ac-primary: #52b788;
+  --ac-primary-2: #40916c;
+  --ac-success: #74c69d;
+  --ac-warning: #facc15; /* for visibility */
+  --ac-danger: #ef4444;
+
+  /* Earthy neutrals */
+  --ac-sand: #dad7cd;
+  --ac-sage: #a3b18a;
+  --ac-fern: #588157;
+  --ac-hunter: #3a5a40;
+  --ac-pine: #344e41;
+
+  /* Radii + shadows */
+  --ac-r-lg: 18px;
+  --ac-r-xl: 22px;
+  --ac-shadow: 0 10px 28px rgba(0,0,0,0.35);
+}
+
+/* App background */
+body {
+  background:
+    radial-gradient(900px 500px at 15% 10%, rgba(82,183,136,0.20), transparent 60%),
+    radial-gradient(800px 520px at 85% 25%, rgba(64,145,108,0.16), transparent 55%),
+    linear-gradient(180deg, var(--ac-bg), var(--ac-bg-2));
+  color: var(--ac-text);
+}
+
+/* Glass panels */
+.glass-card,
+.glass-strong,
+.ac-panel {
+  background: var(--ac-panel);
+  border: 1px solid var(--ac-border);
+  border-radius: var(--ac-r-xl);
+  box-shadow: var(--ac-shadow);
+  backdrop-filter: blur(14px);
+}
+
+.glass-strong {
+  background: rgba(27, 67, 50, 0.55);
+}
+
+.ac-panel {
+  padding: 18px;
+}
+
+/* Dashboard layout helpers */
+.ac-dashboard-wrap {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.ac-dashboard-header {
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.ac-kicker {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ac-muted);
+}
+
+.ac-dashboard-title {
+  font-size: 28px;
+  font-weight: 800;
+  margin-top: 6px;
+}
+
+.ac-dashboard-subtitle {
+  margin-top: 6px;
+  color: var(--ac-muted);
+  font-size: 14px;
+}
+
+/* Row cards (lists) */
+.ac-row-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--ac-r-lg);
+  border: 1px solid rgba(216,243,220,0.10);
+  background: rgba(255,255,255,0.04);
+}
+
+@media (min-width: 768px) {
+  .ac-row-card {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+/* Pills */
+.ac-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgba(216,243,220,0.16);
+}
+
+.ac-pill-neutral {
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.78);
+}
+
+/* Buttons */
+.btn-primary {
+  background: var(--ac-primary);
+  color: #04120d;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-weight: 800;
+  border: 1px solid rgba(255,255,255,0.12);
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: rgba(255,255,255,0.08);
+  color: var(--ac-text);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-weight: 700;
+  border: 1px solid rgba(255,255,255,0.14);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background: rgba(255,255,255,0.12);
+  transform: translateY(-1px);
+}
+
+/* Filter bar */
+.ac-filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  margin-bottom: 18px;
+  padding: 14px;
+  border-radius: var(--ac-r-xl);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(216,243,220,0.10);
+}

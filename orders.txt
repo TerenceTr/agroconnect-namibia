@@ -1,0 +1,4 @@
+"order_id","product_id","buyer_id","order_date","status","total","payment_status","paid_at","payment_reference"
+"e6c45d08-43f9-4dd4-887b-52ca5deb4c0e","099d03d8-79c1-4426-8052-0e65e9a70521","8089381d-495b-4202-a82a-1d2ca54a9185","2025-11-13 00:00:00","completed","120.00","unpaid",NULL,NULL
+"0e14dfbc-a6aa-449c-8b37-528b463f6894","22b1384e-41f8-4be6-b9b1-257d7327499b","3ff20f76-d9e8-42c6-817e-5d3e13c0048d","2025-11-12 00:00:00","completed","100.00","unpaid",NULL,NULL
+"b6455266-a62c-484d-9a5b-9c4222111daf","fb816ea6-30fc-415a-9d03-eab94ada9f9f","b9195d1e-d31e-4651-ba72-ae7ac86dee69","2025-11-14 00:00:00","pending","15.00","unpaid",NULL,NULL

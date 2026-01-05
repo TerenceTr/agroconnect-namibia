@@ -1,0 +1,94 @@
+/* =====================================================================
+   frontend/src/common/loader.css 
+  🌾 AgroConnect Namibia — Loader Animations
+   ===================================================================== */
+
+.ac-loader-container {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+
+  z-index: 9999;
+  animation: fadeIn 0.6s ease-out;
+}
+
+/* -------------------------------------------------------------
+   🔵 PULSING RING LOADER
+   ------------------------------------------------------------- */
+.ac-loader-ring {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 6px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #c1a362;
+  border-bottom-color: #10b981;
+
+  animation: spin 1.2s linear infinite, pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.88);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(0.88);
+  }
+}
+
+/* -------------------------------------------------------------
+   ✨ SHIMMERING BRAND NAME
+   ------------------------------------------------------------- */
+.ac-loader-text {
+  margin-top: 22px;
+  display: flex;
+  gap: 2px;
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: white;
+
+  animation: slideUp 0.8s ease-out;
+}
+
+.ac-loader-text span {
+  animation: shimmer 1.4s infinite alternate;
+}
+
+.ac-loader-text span:nth-child(1) { animation-delay: 0s; }
+.ac-loader-text span:nth-child(2) { animation-delay: 0.05s; }
+.ac-loader-text span:nth-child(3) { animation-delay: 0.1s; }
+.ac-loader-text span:nth-child(4) { animation-delay: 0.15s; }
+.ac-loader-text span:nth-child(5) { animation-delay: 0.2s; }
+.ac-loader-text span:nth-child(6) { animation-delay: 0.25s; }
+.ac-loader-text span:nth-child(7) { animation-delay: 0.3s; }
+.ac-loader-text span:nth-child(8) { animation-delay: 0.35s; }
+.ac-loader-text span:nth-child(9) { animation-delay: 0.4s; }
+.ac-loader-text span:nth-child(10){ animation-delay: 0.45s; }
+.ac-loader-text span:nth-child(11){ animation-delay: 0.5s; }
+
+@keyframes shimmer {
+  0% {
+    opacity: 0.4;
+    transform: translateY(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(-2px);
+    color: #c1a362; /* Premium gold */
+  }
+}
