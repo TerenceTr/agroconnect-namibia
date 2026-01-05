@@ -1,67 +1,82 @@
-# ====================================================================
-# AgroConnect Backend — Python Dependencies
-# --------------------------------------------------------------------
-# PURPOSE:
-#   • Reproducible backend environment
-#   • Flask REST API + WebSockets
-#   • PostgreSQL + Redis
-#   • JWT-based authentication
-#   • Production-ready (Gunicorn compatible)
+# ==============================================================================
+# backend/requirements.txt — AgroConnect Namibia Backend Dependencies
+# ------------------------------------------------------------------------------
+# FILE ROLE:
+#   Reproducible Python environment for the Flask backend API.
+#
+# RESPONSIBILITIES THIS FILE SUPPORTS:
+#   • REST API (Flask)
+#   • PostgreSQL (SQLAlchemy + psycopg v3)
+#   • Migrations (Flask-Migrate/Alembic)
+#   • Auth (PyJWT + bcrypt)
+#   • Realtime (Flask-SocketIO)
+#   • Redis (caching / presence / background queues as applicable)
+#   • Production server (Gunicorn)
 #
 # DESIGN NOTES:
-#   • Uses psycopg v3 (modern PostgreSQL driver)
-#   • Avoids psycopg2 (deprecated / C-extension issues)
-#   • Pins only where stability matters
-#   • Fully compatible with Python 3.13 on Windows & Linux
-#
-# AI / ML dependencies are intentionally excluded.
-# ====================================================================
+#   • psycopg v3 is used (preferred over psycopg2).
+#   • eventlet is required because gunicorn_config.py uses eventlet workers.
+#   • Pin only where stability matters; allow safe patch updates for drivers.
+# ==============================================================================
 
 
-# ===============================
+# ------------------------------------------------------------------------------
 # Core Web Framework
-# ===============================
+# ------------------------------------------------------------------------------
 Flask==3.0.3
 Werkzeug==3.0.3
 Flask-Cors==4.0.1
 
 
-# ===============================
+# ------------------------------------------------------------------------------
 # Database & ORM
-# ===============================
+# ------------------------------------------------------------------------------
 SQLAlchemy==2.0.32
 Flask-SQLAlchemy==3.1.1
-Flask-Migrate==4.0.7
 
-# PostgreSQL driver (modern, async-safe, Python 3.13 compatible)
-# NOTE:
-#   psycopg-binary wheels for Windows start at 3.2.2
-#   Using a range avoids broken installs and allows bugfix updates
+# Migrations
+Flask-Migrate==4.1.0
+alembic==1.13.1
+
+# PostgreSQL driver (psycopg v3)
+# NOTE: Keep a safe range for binary wheels on Windows/Linux.
 psycopg[binary]>=3.2.2,<3.3
 
 
-# ===============================
-# Authentication & Security
-# ===============================
+# ------------------------------------------------------------------------------
+# Authentication & Security (Project standard)
+# ------------------------------------------------------------------------------
 PyJWT==2.9.0
 bcrypt==4.2.0
 
 
-# ===============================
-# Realtime / WebSockets
-# ===============================
+# ------------------------------------------------------------------------------
+# Realtime / WebSockets + Redis
+# ------------------------------------------------------------------------------
 Flask-SocketIO==5.3.6
+
+# REQUIRED when using eventlet worker class in Gunicorn / SocketIO
+eventlet==0.36.1
+
+# Redis client
 redis==5.0.8
 
 
-# ===============================
+# ------------------------------------------------------------------------------
 # Environment & Typing
-# ===============================
+# ------------------------------------------------------------------------------
 python-dotenv==1.0.1
 typing-extensions==4.12.2
 
 
-# ===============================
+# ------------------------------------------------------------------------------
+# Utilities (common backend needs)
+# ------------------------------------------------------------------------------
+requests==2.32.3
+email-validator==2.1.0.post1
+
+
+# ------------------------------------------------------------------------------
 # Production Server
-# ===============================
+# ------------------------------------------------------------------------------
 gunicorn==22.0.0

@@ -1,35 +1,23 @@
-# ============================
-# AgroConnect Backend - Python Dependencies
-# ============================
+# ==============================================================================
+# requirements.txt — AgroConnect Namibia (Monorepo Aggregator)
+# ------------------------------------------------------------------------------
+# FILE ROLE:
+#   Single entrypoint for platforms that expect a root requirements.txt
+#   (e.g., Render / simple CI jobs).
+#
+# DESIGN:
+#   - The real dependency sources of truth live per-service:
+#       • backend/requirements.txt
+#       • ai_service/requirements.txt
+#   - This file simply points pip to the right service requirements to prevent
+#     dependency drift and "works locally, fails on deploy" issues.
+#
+# DEPLOY NOTES:
+#   - If you deploy ONLY the backend as the web service (common), keep ONLY the
+#     backend line enabled.
+#   - If you deploy backend + ai_service in the SAME Python environment (less
+#     common), uncomment the ai_service line too.
+# ==============================================================================
 
-# --- Core Framework ---
-Flask==3.0.3
-
-# --- Database / ORM ---
-SQLAlchemy==2.0.29
-Flask-SQLAlchemy==3.1.1
-
-# --- Migrations ---
-Flask-Migrate==4.1.0
-alembic==1.13.1
-
-# --- Authentication & Security ---
-Flask-JWT-Extended==4.7.1
-Flask-Bcrypt==1.0.1
-
-# --- Real-Time Socket Layer ---
-Flask-SocketIO==5.3.6
-eventlet==0.36.1
-
-# --- CORS ---
-Flask-CORS==4.0.0
-
-# --- Environment Variables ---
-python-dotenv==1.0.1
-
-# --- Utilities ---
-requests==2.32.3
-email-validator==2.1.0.post1
-
-# --- Production Server ---
-gunicorn==22.0.0
+-r backend/requirements.txt
+# -r ai_service/requirements.txt
