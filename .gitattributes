@@ -1,0 +1,49 @@
+# ==============================================================================
+# .gitattributes — AgroConnect Namibia
+# ------------------------------------------------------------------------------
+# FILE ROLE:
+#   Enforce consistent line endings across OSes.
+#   - Developers on Windows can keep CRLF locally where appropriate
+#   - Files used by Docker/Linux (shell scripts, configs) stay LF
+#
+# WHY THIS MATTERS:
+#   Prevents "works on Windows, breaks in Docker/Linux" issues (especially .sh)
+# ==============================================================================
+
+# Default: treat files as text and let Git manage normalization
+* text=auto
+
+# ------------------------------------------------------------------------------
+# Always LF for Linux/Docker runtime files
+# ------------------------------------------------------------------------------
+*.sh          text eol=lf
+Dockerfile    text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.env         text eol=lf
+*.example     text eol=lf
+*.ini         text eol=lf
+*.conf        text eol=lf
+
+# ------------------------------------------------------------------------------
+# Source code (safe as LF; editors handle it fine)
+# ------------------------------------------------------------------------------
+*.py          text eol=lf
+*.js          text eol=lf
+*.jsx         text eol=lf
+*.ts          text eol=lf
+*.tsx         text eol=lf
+*.css         text eol=lf
+*.html        text eol=lf
+*.md          text eol=lf
+
+# ------------------------------------------------------------------------------
+# Binary files (never modify line endings)
+# ------------------------------------------------------------------------------
+*.png         binary
+*.jpg         binary
+*.jpeg        binary
+*.gif         binary
+*.ico         binary
+*.pdf         binary
+*.zip         binary
