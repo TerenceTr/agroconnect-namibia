@@ -859,7 +859,22 @@ export async function fetchNewProducts(options = {}) {
 export async function fetchProductById(productId) {
   try {
     const response = await api.get(`/products/${productId}`);
-    return normalizeProduct(extractData(response));
+    const payload = extractData(response);
+
+    // Backend product detail returns:
+    //   { product: {...} }
+    //
+    // Normalizing the full envelope causes Quick View to display:
+    //   "Unnamed Product", stock 0, missing image/location.
+    //
+    // Always unwrap the actual product object first.
+    const productPayload =
+      payload?.product ??
+      payload?.item ??
+      payload?.row ??
+      payload;
+
+    return normalizeProduct(productPayload);
   } catch (error) {
     throw normalizeError(error, 'Failed to load product.');
   }
@@ -1073,6 +1088,12 @@ export async function submitCheckout(payload = {}) {
     throw normalizeError(error, 'Failed to submit checkout.');
   }
 }
+
+// Backward-compatible checkout aliases expected by useCart.js and checkout UI.
+export const checkoutOrder = submitCheckout;
+export const checkout = submitCheckout;
+export const placeOrder = submitCheckout;
+export const createOrder = submitCheckout;
 
 export async function fetchCustomerOrders(options = {}) {
   try {
@@ -1419,6 +1440,10 @@ const customerApi = {
 
   // Orders / checkout / reviewable items
   submitCheckout,
+  checkoutOrder,
+  checkout,
+  placeOrder,
+  createOrder,
   fetchCustomerOrders,
   fetchCustomerOrderById,
   cancelCustomerOrder,
