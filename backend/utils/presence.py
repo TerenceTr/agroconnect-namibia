@@ -1,22 +1,27 @@
 # ====================================================================
-# backend/utils/presence.py — Online User Tracking (Redis)
+# backend/utils/presence.py — Online User Tracking (Redis, fail-open)
 # ====================================================================
 # PURPOSE:
 #   • Track online / active users
 #   • Shared by Socket.IO + REST APIs
-#   • Redis-backed (horizontal scaling)
+#   • Redis-backed when available
 #
-# PYLANCE FIXES:
-#   • Redis values stored as str
-#   • Protocol shim for hkeys typing
+# DEV/STABILITY UPDATE:
+#   • Presence is now fail-open when Redis is unavailable.
+#   • Socket.IO connect/disconnect must not crash just because local Redis is
+#     down in development.
 # ====================================================================
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Final, List, Protocol, cast
 
 from backend.utils.socketio_rate_limit import redis as _redis
+
+logger = logging.getLogger("backend.presence")
+
 
 # --------------------------------------------------------------------
 # Redis protocol shim
@@ -37,14 +42,31 @@ redis: RedisPresence = cast(RedisPresence, _redis)
 ONLINE_KEY: Final[str] = "presence:online"
 TTL_SECONDS: Final[int] = 60
 
+# Warn once per process so dev logs stay readable.
+_presence_backend_available = True
+
+
+def _handle_presence_error(action: str, exc: Exception) -> None:
+    global _presence_backend_available
+    if _presence_backend_available:
+        logger.warning(
+            "Presence backend unavailable during %s; continuing without Redis-backed presence. Error: %s",
+            action,
+            exc,
+        )
+        _presence_backend_available = False
+
 
 # ====================================================================
 # Presence API
 # ====================================================================
 def mark_online(user_id: str) -> None:
     now = int(time.time())
-    redis.hset(ONLINE_KEY, user_id, str(now))
-    redis.expire(ONLINE_KEY, TTL_SECONDS)
+    try:
+        redis.hset(ONLINE_KEY, user_id, str(now))
+        redis.expire(ONLINE_KEY, TTL_SECONDS)
+    except Exception as exc:
+        _handle_presence_error("mark_online", exc)
 
 
 def mark_active(user_id: str) -> None:
@@ -52,11 +74,18 @@ def mark_active(user_id: str) -> None:
 
 
 def mark_offline(user_id: str) -> None:
-    redis.hdel(ONLINE_KEY, user_id)
+    try:
+        redis.hdel(ONLINE_KEY, user_id)
+    except Exception as exc:
+        _handle_presence_error("mark_offline", exc)
 
 
 def list_online_users() -> List[str]:
-    return list(redis.hkeys(ONLINE_KEY))
+    try:
+        return list(redis.hkeys(ONLINE_KEY))
+    except Exception as exc:
+        _handle_presence_error("list_online_users", exc)
+        return []
 
 
 def presence_snapshot() -> dict[str, list[str] | int]:
@@ -67,14 +96,25 @@ def presence_snapshot() -> dict[str, list[str] | int]:
     active  → users seen within TTL window
     """
     now = int(time.time())
-    raw = redis.hgetall(ONLINE_KEY)
+
+    try:
+        raw = redis.hgetall(ONLINE_KEY)
+    except Exception as exc:
+        _handle_presence_error("presence_snapshot", exc)
+        return {
+            "online": [],
+            "active": [],
+            "count": 0,
+        }
 
     online = list(raw.keys())
-    active = [
-        user_id
-        for user_id, ts in raw.items()
-        if now - int(ts) <= TTL_SECONDS
-    ]
+    active = []
+    for user_id, ts in raw.items():
+        try:
+            if now - int(ts) <= TTL_SECONDS:
+                active.append(user_id)
+        except Exception:
+            continue
 
     return {
         "online": online,

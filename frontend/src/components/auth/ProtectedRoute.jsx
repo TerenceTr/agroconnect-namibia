@@ -1,5 +1,5 @@
 // ============================================================================
-// 🔐 ProtectedRoute.jsx — AgroConnect Namibia
+// frontend/src/components/auth/ProtectedRoute.jsx — AgroConnect Namibia
 // ----------------------------------------------------------------------------
 // ROLE:
 // • Centralized Role-Based Access Control (RBAC)
@@ -9,41 +9,68 @@
 // • Prevents data leakage
 // • Enforces security at routing layer
 // • Clean separation: routing ≠ layout ≠ UI
+//
+// THIS UPDATE:
+// • Normalizes both numeric and string roles
+// • Redirects authenticated users to their correct dashboard home when a stale
+//   or incompatible route is opened (prevents role-switch “Access denied” loops)
+// • Sends unauthenticated traffic back to the public Start screen instead of
+//   the standalone login page
 // ============================================================================
 
-import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from './AuthProvider';
+import React from "react";
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "./AuthProvider";
+
+function normalizeRole(user) {
+  const roleName = String(user?.role_name || user?.roleName || "")
+    .trim()
+    .toLowerCase();
+
+  if (["admin", "farmer", "customer"].includes(roleName)) return roleName;
+
+  const roleNum = Number(user?.role ?? user?.role_id ?? user?.roleId ?? NaN);
+  if (roleNum === 1) return "admin";
+  if (roleNum === 2) return "farmer";
+  if (roleNum === 3) return "customer";
+  return "";
+}
+
+function roleHome(role) {
+  if (role === "admin") return "/dashboard/admin";
+  if (role === "farmer") return "/dashboard/farmer/overview";
+  if (role === "customer") return "/dashboard/customer";
+  return "/";
+}
 
 export default function ProtectedRoute({ roles = [], children }) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
   const location = useLocation();
 
-  // --------------------------------------------------
-  // Not authenticated → redirect to login
-  // --------------------------------------------------
+  if (loading) return null;
+
   if (!isAuthenticated || !user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return (
+      <Navigate
+        to="/"
+        state={{ from: location, authMode: "login" }}
+        replace
+      />
+    );
   }
 
-  // --------------------------------------------------
-  // Normalize role
-  // --------------------------------------------------
-  const role = user.role_name?.toLowerCase();
+  const role = normalizeRole(user);
+  const normalizedRoles = Array.isArray(roles)
+    ? roles.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
+    : [];
 
-  // --------------------------------------------------
-  // RBAC enforcement
-  // --------------------------------------------------
-  if (roles.length > 0 && !roles.includes(role)) {
+  if (normalizedRoles.length > 0 && !normalizedRoles.includes(role)) {
     return (
-      <div className="flex items-center justify-center min-h-[70vh]">
-        <div className="glass-card p-6 text-center border border-red-500/30">
-          <h2 className="text-xl font-semibold text-red-400 mb-2">Access denied</h2>
-          <p className="text-white/70">
-            You do not have permission to access this resource.
-          </p>
-        </div>
-      </div>
+      <Navigate
+        to={roleHome(role)}
+        state={{ deniedFrom: location.pathname }}
+        replace
+      />
     );
   }
 

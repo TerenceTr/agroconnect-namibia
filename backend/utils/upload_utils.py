@@ -4,11 +4,10 @@
 # FILE ROLE:
 #   • Central upload validation + routing.
 #   • Enforces allowed extensions and max sizes.
-#   • Delegates the actual persistence to storage backends via get_storage().
+#   • Delegates persistence to storage backends via get_storage().
 #
 # IMPORTANT:
-#   • This module must remain backend-agnostic:
-#     no filesystem code, no boto3 code, no S3 code here.
+#   • Backend-agnostic: no filesystem code, no boto3 code, no S3 code here.
 # ====================================================================
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ IMAGE_EXTENSIONS: Set[str] = {"png", "jpg", "jpeg", "gif", "webp"}
 DOCUMENT_EXTENSIONS: Set[str] = {"pdf", "csv", "xlsx", "docx"}
 
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_DOCUMENT_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
 def _extension(filename: str) -> str:
@@ -39,6 +39,13 @@ def _validate_file(file: FileStorage, allowed: Set[str]) -> None:
         raise ValueError("Unsupported file type")
 
 
+def _size_of(file: FileStorage) -> int:
+    file.stream.seek(0, 2)
+    size = int(file.stream.tell() or 0)
+    file.stream.seek(0)
+    return size
+
+
 def save_image(
     file: Optional[FileStorage],
     *,
@@ -48,7 +55,7 @@ def save_image(
     Save an image via the configured storage backend.
 
     Returns:
-      • public URL (str) if saved
+      • public URL/path (str) if saved
       • None if no file was provided
     """
     if not file:
@@ -56,11 +63,7 @@ def save_image(
 
     _validate_file(file, IMAGE_EXTENSIONS)
 
-    # Size check
-    file.seek(0, 2)
-    size = file.tell()
-    file.seek(0)
-
+    size = _size_of(file)
     if size > MAX_IMAGE_SIZE:
         raise ValueError("Image exceeds 5MB limit")
 
@@ -73,6 +76,7 @@ def save_file(
     *,
     folder: str,
     allowed_extensions: Set[str],
+    max_size: int = MAX_DOCUMENT_SIZE,
 ) -> Optional[str]:
     """
     Save a generic file via the configured storage backend.
@@ -82,12 +86,17 @@ def save_file(
 
     _validate_file(file, allowed_extensions)
 
+    size = _size_of(file)
+    if size > max_size:
+        raise ValueError("File exceeds maximum allowed size")
+
     storage = get_storage()
     return storage.save(file, folder)
 
 
 def default_image_url() -> str:
     """
-    Default public image URL (frontend can map this to a real asset).
+    Default public image URL.
+    Frontend resolver maps this with robust fallback candidates.
     """
-    return "/uploads/defaults/default.png"
+    return "/Assets/product_images/default.jpg"

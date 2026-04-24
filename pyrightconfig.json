@@ -1,20 +1,24 @@
 {
   "typeCheckingMode": "basic",
-  "pythonVersion": "3.13",
+  "pythonVersion": "3.12",
   "pythonPlatform": "Windows",
+
   "useLibraryCodeForTypes": true,
 
   "reportMissingImports": "none",
   "reportMissingTypeStubs": "none",
 
+  "reportUnknownMemberType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownVariableType": "none",
+
   "venvPath": ".",
   "venv": ".venv",
 
-  "include": ["backend"],
+  "include": ["backend/backend"],
 
   "extraPaths": [
-    ".",
-    "./backend"
+    "backend"
   ],
 
   "exclude": [

@@ -13,7 +13,7 @@
 #
 # OPTION A PHILOSOPHY:
 #   • SQLAlchemy provides a runtime constructor for models
-#   • Do NOT pass kwargs to model constructors (use assignments)
+#   • Do NOT rely on kwargs in model constructors for strict typing
 #   • Production uses Alembic migrations
 #   • db.create_all() is DEV/TEST ONLY
 #
@@ -60,21 +60,19 @@ def get_engine() -> Engine:
     Return the active SQLAlchemy Engine.
 
     WHY:
-      db.engine can be None if db.init_app(app) was never called.
+      db.engine can fail if db.init_app(app) was never called.
       This helper fails fast with a clear message.
 
     Raises:
         RuntimeError: If the engine is not initialized.
     """
-    engine: Optional[Engine] = getattr(db, "engine", None)
-
-    if engine is None:
+    try:
+        return db.engine
+    except Exception as exc:
         raise RuntimeError(
             "SQLAlchemy engine not initialized. "
             "Did you forget db.init_app(app) inside create_app()?"
-        )
-
-    return engine
+        ) from exc
 
 
 # ====================================================================
@@ -85,26 +83,42 @@ def init_db(create_all: bool = False) -> None:
     Import ORM models and optionally create tables.
 
     WHY LAZY IMPORTS:
-      • Prevents circular imports (routes -> models -> db -> app issues)
-      • Ensures db.Model is ready before model classes are evaluated
+      • Prevent circular imports
+      • Ensure db.Model is ready before model classes are evaluated
 
     Args:
         create_all (bool):
             False -> default (production-safe; use Alembic migrations)
             True  -> DEV/TEST ONLY (creates tables from metadata)
     """
-    # ----------------------------------------------------------------
-    # IMPORTANT:
-    # Import ONLY models that exist in your project.
-    # The imports are intentionally unused: importing registers tables.
-    # ----------------------------------------------------------------
     try:
+        # ----------------------------------------------------------------
         # Core domain models
+        # ----------------------------------------------------------------
         from backend.models.user import User  # noqa: F401
         from backend.models.product import Product  # noqa: F401
         from backend.models.order import Order  # noqa: F401
+        from backend.models.order_item import OrderItem  # noqa: F401
+        from backend.models.payment import Payment  # noqa: F401
+        from backend.models.refresh_token import RefreshToken  # noqa: F401
 
-        # Optional models (keep only if these files exist)
+        # ----------------------------------------------------------------
+        # Admin / audit / moderation models
+        # ----------------------------------------------------------------
+        try:
+            from backend.models.admin_audit_event import AdminAuditLog  # noqa: F401
+        except Exception:
+            pass
+
+        try:
+            from backend.models.product_like import ProductLike  # noqa: F401
+        except Exception:
+            pass
+
+        # ----------------------------------------------------------------
+        # Optional domain models
+        # Keep only if these files exist in your project.
+        # ----------------------------------------------------------------
         try:
             from backend.models.rating import Rating  # noqa: F401
         except Exception:
@@ -120,11 +134,30 @@ def init_db(create_all: bool = False) -> None:
         except Exception:
             pass
 
-        # If you have Farmer model, enable this:
-        # try:
-        #     from backend.models.farmer import Farmer  # noqa: F401
-        # except Exception:
-        #     pass
+        try:
+            from backend.models.ai_stock_alert import AIStockAlert  # noqa: F401
+        except Exception:
+            pass
+
+        try:
+            from backend.models.login_event import LoginEvent  # noqa: F401
+        except Exception:
+            pass
+
+        try:
+            from backend.models.delivery_tier import DeliveryTier  # noqa: F401
+        except Exception:
+            pass
+
+        try:
+            from backend.models.farmer_delivery_tier import FarmerDeliveryTier  # noqa: F401
+        except Exception:
+            pass
+
+        try:
+            from backend.models.order_fulfillment import OrderFulfillment  # noqa: F401
+        except Exception:
+            pass
 
     except ImportError as exc:
         raise RuntimeError(

@@ -1,99 +1,149 @@
 // ====================================================================
-// ResetPassword.js — AgroConnect Namibia
-// Fullscreen hero + glass UI + logo + motion
+// frontend/src/pages/ResetPassword.js — AgroConnect Namibia
+// --------------------------------------------------------------------
+// FILE ROLE:
+// • Public reset-password page for the web interface
+// • Consumes the password reset token from the query string
+// • Submits the new password to the backend
+//
+// THIS VERSION FIXES:
+// • Uses the shared AuthPageShell layout
+// • Uses AuthProvider resetPassword()
+// • Handles missing / invalid tokens cleanly
+// • Returns users to the Start screen with login opened after success
 // ====================================================================
 
-import React from "react";
-import { motion } from "framer-motion";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { resetPasswordSchema } from "../components/auth/validationSchemas";
-import { useAuth } from "../components/auth/AuthProvider";
-import { useSearchParams, Link } from "react-router-dom";
+import React from 'react';
+import { motion } from 'framer-motion';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { KeyRound } from 'lucide-react';
+
+import { resetPasswordSchema } from '../components/auth/validationSchemas';
+import { useAuth } from '../components/auth/AuthProvider';
+import AuthPageShell from '../components/auth/AuthPageShell';
+import GlassInput from '../components/common/GlassInput';
+import { notifyError, notifySuccess } from '../utils/notify';
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 45 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.9, ease: "easeOut" } },
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: 'easeOut' } },
 };
 
+const START_LOGIN_STATE = { authMode: 'login' };
+
 export default function ResetPassword() {
+  const navigate = useNavigate();
   const { resetPassword, loading } = useAuth();
   const [params] = useSearchParams();
-  const token = params.get("token");
+  const token = String(params.get('token') || '').trim();
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm({ resolver: zodResolver(resetPasswordSchema) });
+  } = useForm({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: {
+      password: '',
+      confirmPassword: '',
+    },
+  });
 
-  const bgImage = `${process.env.PUBLIC_URL}/assets/namibia-bg.jpg`;
-  const logoImage = `${process.env.PUBLIC_URL}/assets/logo.png`;
+  const onSubmit = async ({ password, confirmPassword }) => {
+    if (!token) {
+      notifyError('Invalid or missing reset token.');
+      return;
+    }
+
+    try {
+      const data = await resetPassword({ token, password, confirmPassword });
+
+      notifySuccess(data?.message || 'Password updated successfully. You can now sign in.');
+      navigate('/', { replace: true, state: START_LOGIN_STATE });
+    } catch (err) {
+      notifyError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          'Could not reset password.'
+      );
+    }
+  };
 
   return (
-    <motion.div
-      initial="hidden"
-      animate="visible"
-      variants={fadeUp}
-      className="min-h-screen flex items-center justify-center relative"
-      style={{ backgroundImage: `url(${bgImage})`, backgroundSize: "cover" }}
-    >
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"/>
+    <AuthPageShell bgImage={`${process.env.PUBLIC_URL}/assets/namibia-bg.jpg`}>
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={fadeUp}
+        className="glass-card w-full max-w-md p-6 text-white sm:p-8 md:p-10"
+      >
+        <img
+          src={`${process.env.PUBLIC_URL}/assets/logo.png`}
+          alt="AgroConnect Logo"
+          className="mx-auto mb-6 h-20"
+        />
 
-      <div className="relative z-10 max-w-md w-full px-4">
-        <div className="glass-card p-10 rounded-xl shadow-glass text-white">
+        <h1 className="mb-3 text-center text-3xl font-bold">Create New Password</h1>
 
-          <img src={logoImage} className="mx-auto h-24 mb-6" alt="logo" />
+        <p className="mb-6 text-center leading-7 text-white/80">
+          Enter your new password below to complete the secure reset process.
+        </p>
 
-          <h1 className="text-3xl font-bold text-center mb-4">Create New Password</h1>
-
-          {!token && (
-            <p className="text-red-300 text-center mb-3">Invalid or missing reset token.</p>
-          )}
-
-          <p className="text-center mb-6 opacity-90">Enter a new password below.</p>
-
-          <form
-            onSubmit={handleSubmit((d) =>
-              resetPassword({ token, password: d.password, confirmPassword: d.confirmPassword })
-            )}
-            className="space-y-6"
-          >
-            <div>
-              <label>New Password</label>
-              <input
-                {...register("password")}
-                type="password"
-                className="w-full mt-2 p-3 rounded-xl bg-white/70 focus:bg-white outline-none"
-                placeholder="••••••••"
-              />
-              {errors.password && <p className="text-red-300 text-sm">{errors.password.message}</p>}
-            </div>
-
-            <div>
-              <label>Confirm Password</label>
-              <input
-                {...register("confirmPassword")}
-                type="password"
-                className="w-full mt-2 p-3 rounded-xl bg-white/70 focus:bg-white outline-none"
-                placeholder="••••••••"
-              />
-              {errors.confirmPassword && (
-                <p className="text-red-300 text-sm">{errors.confirmPassword.message}</p>
-              )}
-            </div>
-
-            <button disabled={loading || !token} className="ac-btn-primary w-full mt-2">
-              {loading ? "Updating..." : "Update Password"}
-            </button>
-          </form>
-
-          <div className="text-center mt-6">
-            <Link to="/login" className="underline hover:text-gray-200">Back to Login</Link>
+        {!token ? (
+          <div className="mb-6 rounded-2xl border border-red-300/35 bg-red-500/15 p-4 text-sm text-white backdrop-blur-sm">
+            Invalid or missing reset token. Request a new password reset link and try again.
           </div>
+        ) : null}
 
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+          <GlassInput
+            name="password"
+            label="New Password"
+            type="password"
+            placeholder="Minimum 6 characters"
+            register={register}
+            error={errors.password}
+            autoComplete="new-password"
+            enablePasswordToggle
+          />
+
+          <GlassInput
+            name="confirmPassword"
+            label="Confirm Password"
+            type="password"
+            placeholder="Re-enter your new password"
+            register={register}
+            error={errors.confirmPassword}
+            autoComplete="new-password"
+            enablePasswordToggle
+          />
+
+          <button type="submit" className="ac-btn-primary w-full" disabled={loading || !token}>
+            {loading ? (
+              'Updating password…'
+            ) : (
+              <>
+                <KeyRound size={18} />
+                Update Password
+              </>
+            )}
+          </button>
+        </form>
+
+        <div className="mt-6 space-y-2 text-center text-white/90">
+          <Link to="/forgot-password" className="underline">
+            Request another reset link
+          </Link>
+          <p>
+            <Link to="/" state={START_LOGIN_STATE} className="underline">
+              Back to Start
+            </Link>
+          </p>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    </AuthPageShell>
   );
 }

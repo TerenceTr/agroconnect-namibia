@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 import fakeredis.aioredis
 
-from ai_service.redis_cache import AsyncJsonCache
+from ai_service.services.redis_cache import AsyncJsonCache
 
 
 # --------------------------------------------------------------------

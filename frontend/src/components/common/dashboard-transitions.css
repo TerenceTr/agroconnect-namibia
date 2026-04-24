@@ -1,49 +1,80 @@
-/* ================================================================
-  frontend/src/common/dashboard-transitions.css
-  🌾 Enhanced Dashboard Animations
-   slide + fade + depth (GPU optimized)
-   ================================================================= */
+/* ============================================================================
+   frontend/src/components/common/dashboard-transitions.css
+   ----------------------------------------------------------------------------
+   FILE ROLE:
+     Route transition styles used by RouterLayout.
 
+   IMPORTANT FIX IN THIS UPDATE:
+     ✅ Removes transform-based route animations
+     ✅ Keeps smooth page transitions using opacity only
+     ✅ Prevents transformed ancestors from breaking position: fixed
+     ✅ Allows AdminTopbar to remain truly fixed on ALL admin pages:
+        - Dashboard
+        - Users
+        - Moderation
+        - Audit Log
+        - Analytics
+        - Reports & Analytics
+        - Messaging & Broadcasts
+        - System Settings
+
+   WHY THIS FIX IS NEEDED:
+     Any ancestor with CSS transform can make nested "position: fixed" elements
+     behave like they are positioned inside that ancestor instead of the viewport.
+     Your AdminLayout already uses a fixed topbar correctly, but the route
+     transition wrapper was overriding that behavior indirectly.
+   ============================================================================ */
+
+/* Root wrapper for route transitions */
 .dash-transition-wrapper {
-  will-change: opacity, transform;
+  position: relative;
+  min-height: 100%;
+  will-change: opacity;
 }
 
-/* ---- ENTER ---- */
+/* --------------------------------------------------------------------------
+   ENTER
+   Keep transitions premium and calm without transform-based motion.
+-------------------------------------------------------------------------- */
 .dash-animate-enter {
   opacity: 0;
-  transform: translateX(22px) scale(0.98);
 }
+
 .dash-animate-enter-active {
   opacity: 1;
-  transform: translateX(0) scale(1);
-  transition: all 450ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* ---- EXIT ---- */
+/* --------------------------------------------------------------------------
+   EXIT
+-------------------------------------------------------------------------- */
 .dash-animate-exit {
   opacity: 1;
-  transform: translateX(0) scale(1);
-}
-.dash-animate-exit-active {
-  opacity: 0;
-  transform: translateX(-22px) scale(0.96);
-  transition: all 350ms cubic-bezier(0.55, 0, 0.55, 0.2);
 }
 
-/* ---- OPTIONAL THEMATIC GLOW ---- */
+.dash-animate-exit-active {
+  opacity: 0;
+  transition: opacity 180ms cubic-bezier(0.55, 0, 0.55, 0.2);
+}
+
+/* --------------------------------------------------------------------------
+   Optional subtle visual polish layer
+   Kept lightweight and non-intrusive.
+-------------------------------------------------------------------------- */
 .dash-transition-wrapper::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.18s ease;
 }
+
 .dash-animate-enter-active::after {
-  opacity: 0.06;
+  opacity: 0.03;
   background: radial-gradient(
-    circle at 60% 30%,
-    rgba(193, 163, 98, 0.18),
-    transparent 70%
+    circle at 60% 24%,
+    rgba(64, 145, 108, 0.08),
+    transparent 72%
   );
 }

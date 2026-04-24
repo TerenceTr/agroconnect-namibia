@@ -1,21 +1,16 @@
 // ============================================================================
-// src/hooks/useApi.jsx — AgroConnect Namibia
+// frontend/src/hooks/useApi.jsx — AgroConnect Namibia
 // ----------------------------------------------------------------------------
 // FILE ROLE:
 //   Reusable GET data-fetch hook for pages/dashboards.
-//
-// RESPONSIBILITIES:
-//   • Fetch data from a GET endpoint using the shared Axios client (src/api.js)
-//   • Provide consistent shape: { data, loading, error, status, refetch, usedEndpoint }
-//   • Support fallback endpoints (array): tries next on 404/405
-//   • Normalize "/api/*" endpoints when Axios baseURL already ends with "/api"
-//   • Avoid stale async updates after unmount / route change (AbortController)
-//   • Prevent “fetch on every render” by stabilizing params/headers dependencies
-//
-// WHY THIS MATTERS:
-//   Many dashboard pages pass inline objects: { farmerId, days, q }
-//   If those objects are used directly in hook dependencies, React will refetch
-//   continuously. This hook now stabilizes them safely.
+//   • GET via shared Axios client (frontend/src/api.js)
+//   • Consistent shape: { data, loading, error, status, refetch, usedEndpoint }
+//   • Supports fallback endpoints (array): tries next on 404/405
+//   • Normalizes "/api/*" endpoints when Axios baseURL already ends with "/api"
+//   • Avoids stale async updates after unmount / route change (AbortController)
+//   • Prevents “fetch on every render” by stabilizing:
+//       - params/headers (objects)
+//       - endpoints (arrays often created inline by pages)
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,11 +26,11 @@ function isAbsoluteUrl(url) {
 /**
  * Normalize endpoint so it plays nicely with api.js baseURL = ".../api"
  *
- * Accepts any of these safely:
+ * Accepts:
  *   "admin/overview"
  *   "/admin/overview"
- *   "/api/admin/overview"   <-- normalized to "/admin/overview" if baseURL ends with /api
- *   "http://localhost:5000/api/admin/overview" (absolute, left untouched)
+ *   "/api/admin/overview"   -> "/admin/overview" (when baseURL ends with /api)
+ *   "http://localhost:5000/api/admin/overview" (absolute, untouched)
  */
 function normalizeEndpoint(endpoint) {
   if (!endpoint) return null;
@@ -62,7 +57,7 @@ function normalizeEndpoint(endpoint) {
 }
 
 // ----------------------------------------------------------------------------
-// Stable stringify (sorted keys) to memoize params/headers safely
+// Stable stringify (sorted keys) to memoize objects safely
 // ----------------------------------------------------------------------------
 function stableStringify(value) {
   const seen = new WeakSet();
@@ -86,7 +81,8 @@ function stableStringify(value) {
   try {
     return JSON.stringify(sorter(value));
   } catch {
-    // Fallback: if it can't stringify, treat as changing every time
+    // If it can't stringify, treat it as changing every time.
+    // (This should be rare for params/headers/endpoints.)
     return String(Math.random());
   }
 }
@@ -125,7 +121,8 @@ function isRetryableNotFound(status) {
  * @param {any}     [options.initialData]   - initial data (default: undefined)
  * @param {object}  [options.params]        - axios params
  * @param {object}  [options.headers]       - axios headers
- * @param {boolean} [options.coerceNull]    - if true, response null -> undefined (default: true)
+ * @param {boolean} [options.coerceNull]    - null -> undefined (default: true)
+ * @param {boolean} [options.skipAuth]      - for public endpoints (no Authorization)
  * @param {any[]}   [options.deps]          - extra deps to trigger refetch
  *
  * @returns { data, loading, error, status, refetch, usedEndpoint }
@@ -137,17 +134,45 @@ export default function useApi(endpointOrEndpoints, options = {}) {
     params,
     headers,
     coerceNull = true,
+    skipAuth = false,
     deps = [],
   } = options;
 
-  // Normalize into an array of endpoints (supports fallback)
-  const endpoints = useMemo(() => {
-    const list = Array.isArray(endpointOrEndpoints)
-      ? endpointOrEndpoints
-      : [endpointOrEndpoints];
+  // --------------------------------------------------------------------------
+  // CRITICAL FIX:
+  // Many pages pass endpoints as an array returned by a function:
+  //   useApi(epOverview(farmerId), ...)
+  // That array is often NEW on every render → without stabilization, it would
+  // trigger fetch-on-every-render.
+  //
+  // We build a stable "endpointKey" from content, then derive endpoints from it.
+  // --------------------------------------------------------------------------
+  const endpointKey = useMemo(
+    () => stableStringify(endpointOrEndpoints),
+    [endpointOrEndpoints]
+  );
 
-    return list.map((e) => normalizeEndpoint(e)).filter(Boolean);
-  }, [endpointOrEndpoints]);
+  // Normalize into a de-duplicated array of endpoints (supports fallback)
+  const endpoints = useMemo(() => {
+    // NOTE: We intentionally depend on endpointKey (content), not array identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const src = endpointOrEndpoints;
+
+    const list = Array.isArray(src) ? src : [src];
+
+    // Normalize then de-dupe (important when callers provide both "/api/x" and "/x")
+    const normalized = list.map((e) => normalizeEndpoint(e)).filter(Boolean);
+
+    const out = [];
+    const seen = new Set();
+    for (const u of normalized) {
+      if (seen.has(u)) continue;
+      seen.add(u);
+      out.push(u);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpointKey]);
 
   const enabled = enabledProp ?? endpoints.length > 0;
 
@@ -155,10 +180,12 @@ export default function useApi(endpointOrEndpoints, options = {}) {
   const paramsKey = useMemo(() => stableStringify(params), [params]);
   const headersKey = useMemo(() => stableStringify(headers), [headers]);
 
-  const stableParams = useMemo(() => params, [paramsKey]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const stableHeaders = useMemo(() => headers, [headersKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableParams = useMemo(() => params, [paramsKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableHeaders = useMemo(() => headers, [headersKey]);
 
-  // CRITICAL: start as undefined (NOT null) so destructuring defaults work:
+  // Start as undefined (NOT null) so destructuring defaults work:
   //   const { data: users = [] } = useApi(...)
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(Boolean(enabled && endpoints.length));
@@ -166,7 +193,7 @@ export default function useApi(endpointOrEndpoints, options = {}) {
   const [status, setStatus] = useState(null);
   const [usedEndpoint, setUsedEndpoint] = useState(null);
 
-  // Used to cancel in-flight requests safely on unmount/route change
+  // Cancel in-flight requests safely on unmount/route change
   const abortRef = useRef(null);
 
   const fetchNow = useCallback(async () => {
@@ -191,13 +218,15 @@ export default function useApi(endpointOrEndpoints, options = {}) {
 
     let lastErr = null;
 
-    // Try endpoints in order; if first is missing (404/405), try next
+    // Try endpoints in order; if missing (404/405), try next
     for (const url of endpoints) {
       try {
         const res = await api.get(url, {
           params: stableParams,
           headers: stableHeaders,
           signal: controller.signal, // axios v1 supports AbortController
+          // NOTE: api.js interceptor may read config.skipAuth to omit Authorization.
+          skipAuth,
         });
 
         if (controller.signal.aborted) return;
@@ -216,15 +245,14 @@ export default function useApi(endpointOrEndpoints, options = {}) {
         const e = normalizeError(err);
         lastErr = e;
 
-        // Only fall back when endpoint is missing / method not allowed
-        if (isRetryableNotFound(e.status)) continue;
+        if (isRetryableNotFound(e.status)) continue; // try next fallback
 
         // Other errors (401/500/etc): stop immediately
         break;
       }
     }
 
-    // If we got here, all attempts failed
+    // All attempts failed
     setUsedEndpoint(null);
     setStatus(lastErr?.status ?? null);
     setError(lastErr?.message ?? "Request failed");
@@ -237,12 +265,11 @@ export default function useApi(endpointOrEndpoints, options = {}) {
     stableHeaders,
     initialData,
     coerceNull,
+    skipAuth,
   ]);
 
-  // Auto-fetch on mount + when dependencies change
   useEffect(() => {
     fetchNow();
-
     return () => {
       if (abortRef.current) abortRef.current.abort();
     };
@@ -255,6 +282,6 @@ export default function useApi(endpointOrEndpoints, options = {}) {
     error,
     status,
     refetch: fetchNow,
-    usedEndpoint, // helpful for debugging which backend route worked
+    usedEndpoint,
   };
 }

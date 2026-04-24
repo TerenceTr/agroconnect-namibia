@@ -1,23 +1,21 @@
 // ============================================================================
 // frontend/src/pages/dashboards/admin/AdminUsersPage.jsx
 // ----------------------------------------------------------------------------
-// 🌾 AgroConnect Namibia — Admin Users (Readable + Production UI)
-// ----------------------------------------------------------------------------
 // FILE ROLE:
 //   Admin UI for managing users.
-//   • Search + role/status filters
-//   • Export CSV/PDF (NOW placed at bottom of table per request)
-//   • Activate/Deactivate users
 //
-// UI FIXES INCLUDED:
-//   • Light-theme tokens (no more text-white/white/10 on white background)
-//   • Clearer table grid lines (stronger borders + column separators)
-//   • Export moved to table footer (bottom-right)
+// THIS UPDATE:
+//   ✅ Uses page space better with responsive user cards
+//   ✅ Adds client-side pagination to reduce long scrolling
+//   ✅ Keeps search + role/status filters
+//   ✅ Keeps activate/deactivate actions
+//   ✅ Keeps CSV/PDF export
+//   ✅ Presents a cleaner master's-level admin workspace
 // ============================================================================
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "react-hot-toast";
 import { format } from "date-fns";
+import toast from "react-hot-toast";
 import {
   Users,
   Search,
@@ -26,6 +24,11 @@ import {
   UserX,
   FileDown,
   FileText,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  ShieldCheck,
+  UserRound,
 } from "lucide-react";
 
 import api from "../../../api";
@@ -34,9 +37,11 @@ import ProtectedRoute from "../../../components/auth/ProtectedRoute";
 import Card from "../../../components/ui/Card";
 import EmptyState from "../../../components/ui/EmptyState";
 
-// ---------------------------------------------------------------------------
-// Null-safe helpers
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
+const PAGE_SIZE = 8;
+
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
 }
@@ -65,9 +70,14 @@ function normalizeStatus(u) {
   return "active";
 }
 
-// ---------------------------------------------------------------------------
-// Small UI utility: close dropdown on outside click
-// ---------------------------------------------------------------------------
+function titleCaseWords(v) {
+  return safeStr(v)
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
 function useOutsideClick(ref, handler) {
   useEffect(() => {
     function onDown(e) {
@@ -81,19 +91,95 @@ function useOutsideClick(ref, handler) {
   }, [ref, handler]);
 }
 
+function StatCard({ title, value, subtext, tone = "slate" }) {
+  const accent =
+    tone === "emerald"
+      ? "border-emerald-200 bg-emerald-50/70"
+      : tone === "amber"
+      ? "border-amber-200 bg-amber-50/70"
+      : tone === "rose"
+      ? "border-rose-200 bg-rose-50/70"
+      : "border-slate-200 bg-white";
+
+  return (
+    <Card className={`rounded-2xl border p-4 shadow-sm ${accent}`}>
+      <div className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</div>
+      <div className="mt-2 text-2xl font-black text-slate-900">{value}</div>
+      <div className="mt-1 text-xs font-semibold text-slate-600">{subtext}</div>
+    </Card>
+  );
+}
+
+function PaginationBar({ page, totalPages, totalItems, onPageChange }) {
+  if (totalPages <= 1) return null;
+
+  const pages = [];
+  const start = Math.max(1, page - 2);
+  const end = Math.min(totalPages, page + 2);
+
+  for (let p = start; p <= end; p += 1) pages.push(p);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm md:flex-row md:items-center md:justify-between">
+      <div className="text-sm font-semibold text-slate-600">
+        Page <span className="font-extrabold text-slate-900">{page}</span> of{" "}
+        <span className="font-extrabold text-slate-900">{totalPages}</span> •{" "}
+        <span className="font-extrabold text-slate-900">{totalItems}</span> users
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page === 1}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Prev
+        </button>
+
+        {pages.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onPageChange(p)}
+            className={[
+              "rounded-xl border px-3 py-2 text-sm font-extrabold transition",
+              p === page
+                ? "border-slate-900 bg-slate-900 text-white"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+            ].join(" ")}
+          >
+            {p}
+          </button>
+        ))}
+
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          disabled={page === totalPages}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Next
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
-  // Export dropdown (now in table footer)
   const [showExport, setShowExport] = useState(false);
   const exportRef = useRef(null);
   useOutsideClick(exportRef, () => setShowExport(false));
 
-  // Build query params (only non-empty)
   const params = useMemo(() => {
     const p = new URLSearchParams({
       ...(query && { q: query }),
@@ -123,6 +209,10 @@ export default function AdminUsersPage() {
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, roleFilter, statusFilter]);
 
   async function toggleUserStatus(userId, currentStatus) {
     try {
@@ -178,56 +268,149 @@ export default function AdminUsersPage() {
     }));
   }, [users]);
 
-  // Helper for consistent grid lines (vertical separators)
-  const thBase =
-    "px-4 py-3 text-left font-semibold text-slate-700 border-b border-slate-200 bg-slate-50";
-  const tdBase =
-    "px-4 py-3 text-slate-700 border-b border-slate-200";
-  const vSep = "border-r border-slate-200 last:border-r-0";
+  const summary = useMemo(() => {
+    const total = rows.length;
+    const active = rows.filter((u) => normalizeStatus(u) === "active").length;
+    const inactive = rows.filter((u) => normalizeStatus(u) === "inactive").length;
+    const admins = rows.filter((u) => normalizeRole(u).toLowerCase() === "admin").length;
+    const farmers = rows.filter((u) => normalizeRole(u).toLowerCase() === "farmer").length;
+    const customers = rows.filter((u) => normalizeRole(u).toLowerCase() === "customer").length;
+
+    return { total, active, inactive, admins, farmers, customers };
+  }, [rows]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+
+  const pagedRows = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return rows.slice(start, start + PAGE_SIZE);
+  }, [rows, safePage]);
 
   return (
     <ProtectedRoute roles={["admin"]}>
       <AdminLayout>
         <div className="space-y-6">
-          {/* Header + Filters */}
-          <Card className="p-6">
-            <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-emerald-700" />
-              <h2 className="text-xl font-semibold text-slate-900">User Management</h2>
+          {/* Header */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-emerald-700" />
+                <h2 className="text-2xl font-extrabold text-slate-900">User Management</h2>
+              </div>
+              <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                Manage platform accounts, review role distribution, and activate or deactivate users
+                from a compact administrative workspace.
+              </p>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={fetchUsers}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-extrabold text-slate-800 hover:bg-slate-50"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </button>
+
+              <div className="relative" ref={exportRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowExport((v) => !v)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white shadow-sm hover:bg-emerald-700"
+                >
+                  <FileDown className="h-4 w-4" />
+                  Export
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+
+                {showExport && (
+                  <div className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => exportUsers("csv")}
+                      className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                    >
+                      <FileText className="h-4 w-4 text-slate-600" />
+                      Export CSV
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => exportUsers("pdf")}
+                      className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                    >
+                      <FileDown className="h-4 w-4 text-slate-600" />
+                      Export PDF
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Summary cards */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+            <StatCard
+              title="Total users"
+              value={summary.total}
+              subtext="Accounts currently returned by the active filter set."
+              tone="slate"
+            />
+            <StatCard
+              title="Active users"
+              value={summary.active}
+              subtext="Accounts currently available for login and use."
+              tone="emerald"
+            />
+            <StatCard
+              title="Inactive users"
+              value={summary.inactive}
+              subtext="Accounts currently disabled by admin status control."
+              tone="rose"
+            />
+            <StatCard
+              title="Role distribution"
+              value={`${summary.admins}/${summary.farmers}/${summary.customers}`}
+              subtext="Admin / Farmer / Customer"
+              tone="amber"
+            />
+          </div>
+
+          {/* Filters */}
+          <Card className="rounded-2xl border border-slate-200 p-5 shadow-sm">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 fetchUsers();
               }}
-              className="mt-5 grid grid-cols-1 md:grid-cols-4 gap-3"
+              className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_220px_220px_auto]"
             >
-              <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-slate-600 mb-1">
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
                   Search
                 </label>
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 focus-within:ring-2 focus-within:ring-emerald-200">
-                  <Search className="w-4 h-4 text-slate-500" />
+                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 focus-within:ring-2 focus-within:ring-emerald-200">
+                  <Search className="h-4 w-4 text-slate-500" />
                   <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Email or name…"
-                    className="w-full bg-transparent outline-none text-slate-900 placeholder:text-slate-400"
+                    placeholder="Search by full name or email"
+                    className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
                   Role
                 </label>
                 <select
                   value={roleFilter}
                   onChange={(e) => setRoleFilter(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 outline-none focus:ring-2 focus:ring-emerald-200"
+                  className="h-[44px] w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-200"
                 >
-                  <option value="">All</option>
+                  <option value="">All roles</option>
                   <option value="admin">Admin</option>
                   <option value="farmer">Farmer</option>
                   <option value="customer">Customer</option>
@@ -235,162 +418,153 @@ export default function AdminUsersPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
                   Status
                 </label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 outline-none focus:ring-2 focus:ring-emerald-200"
+                  className="h-[44px] w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-200"
                 >
-                  <option value="">All</option>
+                  <option value="">All statuses</option>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
               </div>
 
-              <div className="md:col-span-4 flex justify-end">
+              <div className="flex items-end">
                 <button
                   type="submit"
-                  className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  className="inline-flex h-[44px] items-center justify-center rounded-2xl bg-emerald-600 px-5 text-sm font-extrabold text-white shadow-sm hover:bg-emerald-700"
                 >
-                  Apply Filters
+                  Apply filters
                 </button>
               </div>
             </form>
           </Card>
 
-          {/* Table */}
-          <Card className="p-0">
+          {/* Users grid */}
+          <Card className="rounded-2xl border border-slate-200 p-4 shadow-sm">
             {loading ? (
-              <div className="p-6 text-slate-600">Loading users…</div>
+              <div className="p-4 text-sm font-semibold text-slate-600">Loading users…</div>
             ) : rows.length === 0 ? (
-              <div className="p-6">
+              <div className="p-4">
                 <EmptyState message="No users found." />
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
-                  {/* Clear grid lines: border + column separators */}
-                  <div className="min-w-[900px] border border-slate-200 rounded-2xl overflow-hidden">
-                    <table className="min-w-full text-sm bg-white">
-                      <thead>
-                        <tr>
-                          <th className={[thBase, vSep].join(" ")}>Full Name</th>
-                          <th className={[thBase, vSep].join(" ")}>Email</th>
-                          <th className={[thBase, vSep].join(" ")}>Role</th>
-                          <th className={[thBase, vSep].join(" ")}>Status</th>
-                          <th className={[thBase, vSep].join(" ")}>Created</th>
-                          <th className={[thBase, "text-right"].join(" ")}>Actions</th>
-                        </tr>
-                      </thead>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-extrabold text-slate-900">User directory</div>
+                    <div className="mt-1 text-xs font-semibold text-slate-500">
+                      Showing {pagedRows.length} users on this page • {rows.length} total matches
+                    </div>
+                  </div>
 
-                      <tbody>
-                        {rows.map((u) => {
-                          const status = normalizeStatus(u);
-                          const roleName = normalizeRole(u);
-
-                          return (
-                            <tr key={u.id} className="hover:bg-slate-50">
-                              <td className={[tdBase, vSep, "font-semibold text-slate-900"].join(" ")}>
-                                {safeStr(u.full_name, "—") || "—"}
-                              </td>
-
-                              <td className={[tdBase, vSep].join(" ")}>
-                                {safeStr(u.email, "—") || "—"}
-                              </td>
-
-                              <td className={[tdBase, vSep, "capitalize"].join(" ")}>
-                                {roleName || "—"}
-                              </td>
-
-                              <td className={[tdBase, vSep].join(" ")}>
-                                <span
-                                  className={[
-                                    "text-xs px-2 py-1 rounded-full border inline-flex items-center",
-                                    status === "active"
-                                      ? "text-emerald-700 border-emerald-200 bg-emerald-50"
-                                      : "text-red-700 border-red-200 bg-red-50",
-                                  ].join(" ")}
-                                >
-                                  {status}
-                                </span>
-                              </td>
-
-                              <td className={[tdBase, vSep, "text-slate-600"].join(" ")}>
-                                {u.created_at
-                                  ? format(new Date(u.created_at), "dd MMM yyyy")
-                                  : "—"}
-                              </td>
-
-                              <td className={[tdBase, "text-right"].join(" ")}>
-                                {status === "active" ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleUserStatus(u.id, status)}
-                                    className="inline-flex items-center gap-1 text-red-600 hover:text-red-700 font-semibold"
-                                  >
-                                    <UserX className="w-4 h-4" />
-                                    Deactivate
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleUserStatus(u.id, status)}
-                                    className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 font-semibold"
-                                  >
-                                    <UserCheck className="w-4 h-4" />
-                                    Activate
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Status changes are applied immediately
                   </div>
                 </div>
 
-                {/* Footer bar (BOTTOM): count + Export dropdown */}
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-2xl">
-                  <div className="text-xs text-slate-600">
-                    Showing <span className="font-semibold">{rows.length}</span> user
-                    {rows.length === 1 ? "" : "s"} (max 2000 per query).
-                  </div>
+                <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+                  {pagedRows.map((u) => {
+                    const status = normalizeStatus(u);
+                    const roleName = normalizeRole(u);
+                    const createdLabel = u.created_at
+                      ? format(new Date(u.created_at), "dd MMM yyyy")
+                      : "—";
 
-                  <div className="relative" ref={exportRef}>
-                    <button
-                      type="button"
-                      onClick={() => setShowExport((v) => !v)}
-                      className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                    >
-                      <FileDown className="w-4 h-4" />
-                      Export
-                      <ChevronDown className="w-4 h-4" />
-                    </button>
+                    return (
+                      <div
+                        key={u.id}
+                        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md"
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-slate-200 bg-slate-50">
+                            <UserRound className="h-6 w-6 text-slate-600" />
+                          </div>
 
-                    {showExport && (
-                      <div className="absolute right-0 mt-2 w-52 rounded-xl bg-white border border-slate-200 shadow-lg z-50 overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => exportUsers("csv")}
-                          className="w-full px-4 py-3 text-left text-sm text-slate-800 hover:bg-slate-50 flex items-center gap-2"
-                        >
-                          <FileText className="w-4 h-4 text-slate-600" />
-                          Export CSV
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => exportUsers("pdf")}
-                          className="w-full px-4 py-3 text-left text-sm text-slate-800 hover:bg-slate-50 flex items-center gap-2"
-                        >
-                          <FileDown className="w-4 h-4 text-slate-600" />
-                          Export PDF
-                        </button>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="truncate text-sm font-extrabold text-slate-900">
+                                {safeStr(u.full_name, "—") || "—"}
+                              </div>
+
+                              <span
+                                className={[
+                                  "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-extrabold",
+                                  status === "active"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                    : "border-rose-200 bg-rose-50 text-rose-800",
+                                ].join(" ")}
+                              >
+                                {titleCaseWords(status)}
+                              </span>
+
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-extrabold text-slate-700">
+                                {titleCaseWords(roleName)}
+                              </span>
+                            </div>
+
+                            <div className="mt-1 truncate text-sm font-semibold text-slate-600">
+                              {safeStr(u.email, "—") || "—"}
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-slate-600 sm:grid-cols-4">
+                              <div>
+                                <div className="font-bold uppercase tracking-wide text-slate-500">Role</div>
+                                <div className="mt-1 font-semibold text-slate-800">{titleCaseWords(roleName)}</div>
+                              </div>
+                              <div>
+                                <div className="font-bold uppercase tracking-wide text-slate-500">Status</div>
+                                <div className="mt-1 font-semibold text-slate-800">{titleCaseWords(status)}</div>
+                              </div>
+                              <div>
+                                <div className="font-bold uppercase tracking-wide text-slate-500">Created</div>
+                                <div className="mt-1 font-semibold text-slate-800">{createdLabel}</div>
+                              </div>
+                              <div>
+                                <div className="font-bold uppercase tracking-wide text-slate-500">User ID</div>
+                                <div className="mt-1 truncate font-mono text-[11px] text-slate-700">{safeStr(u.id, "—")}</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0">
+                            {status === "active" ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleUserStatus(u.id, status)}
+                                className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-extrabold text-rose-800 hover:bg-rose-100"
+                              >
+                                <UserX className="h-4 w-4" />
+                                Deactivate
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => toggleUserStatus(u.id, status)}
+                                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-extrabold text-emerald-800 hover:bg-emerald-100"
+                              >
+                                <UserCheck className="h-4 w-4" />
+                                Activate
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-5">
+                  <PaginationBar
+                    page={safePage}
+                    totalPages={totalPages}
+                    totalItems={rows.length}
+                    onPageChange={setPage}
+                  />
                 </div>
               </>
             )}

@@ -1,5 +1,5 @@
 # ====================================================================
-# backend/routes/admin_users.py — Admin User Management (JWT) [PYRIGHT-CLEAN]
+# backend/routes/admin_users.py — Admin User Management + Audit Hooks
 # --------------------------------------------------------------------
 # FILE ROLE:
 #   Admin endpoints powering AdminUsersPage:
@@ -12,11 +12,19 @@
 #   PATCH /api/admin/users/<id>/status   { status: "active"|"inactive" }
 #   GET   /api/admin/users/export?type=csv|pdf&q=&role=&status=
 #
-# PYRIGHT/PYLANCE NOTE (ReportLab):
-#   Some editors flag ReportLab imports if it's not installed in the active venv
-#   or if type stubs are missing. To keep typing clean:
-#     • We import reportlab ONLY inside the PDF branch at runtime.
-#     • We provide TYPE_CHECKING-only imports with "ignore" hints.
+# UPDATED DESIGN:
+#   ✅ Adds USER ACTIVITY audit events for:
+#        - admin_list_users
+#        - admin_export_users
+#        - admin_view_users_export_pdf_fallback (when ReportLab missing)
+#   ✅ Adds ADMIN GOVERNANCE audit event for:
+#        - update_user_status
+#   ✅ Preserves existing route shapes so AdminUsersPage does not break
+#   ✅ Keeps runtime-only ReportLab import to avoid editor/type issues
+#
+# IMPORTANT AUDIT BOUNDARY:
+#   - user_activity_events => admin browsing / report generation / list usage
+#   - admin_audit_log      => privileged account state changes
 # ====================================================================
 
 from __future__ import annotations
@@ -25,25 +33,24 @@ import csv
 import io
 import uuid
 from datetime import datetime
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 from flask.blueprints import Blueprint
 from flask.globals import g, request
 from flask.json import jsonify
 from flask.wrappers import Response
-
 from sqlalchemy import or_, select
 
 from backend.database.db import db
 from backend.models.user import ROLE_ADMIN, ROLE_CUSTOMER, ROLE_FARMER, User
+from backend.services.audit_logger import AuditLogger
 from backend.utils.require_auth import require_access_token
 
 # --------------------------------------------------------------------
-# TYPE-CHECKING ONLY: Provide optional symbols so Pyright doesn't raise
-# "Import could not be resolved". These do NOT execute at runtime.
+# TYPE-CHECKING ONLY: provide optional symbols so Pyright does not raise
+# missing import errors when ReportLab is not installed in the editor env.
 # --------------------------------------------------------------------
 if TYPE_CHECKING:
-    # These imports may not exist in the editor environment; keep them optional.
     from reportlab.lib.pagesizes import A4 as _A4  # type: ignore[import-not-found]
     from reportlab.pdfgen.canvas import Canvas as _Canvas  # type: ignore[import-not-found]
 
@@ -61,12 +68,64 @@ def _json(payload: Any, status: int = 200) -> Response:
 
 
 # --------------------------------------------------------------------
+# Small helpers
+# --------------------------------------------------------------------
+def _safe_str(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        return str(value)
+    except Exception:
+        return ""
+
+
+def _safe_uuid(value: str) -> Optional[uuid.UUID]:
+    try:
+        return uuid.UUID(str(value))
+    except Exception:
+        return None
+
+
+def _request_session_id() -> Optional[str]:
+    """
+    Best-effort session correlation ID for user activity logging.
+    """
+    header_value = (
+        request.headers.get("X-Session-ID")
+        or request.headers.get("X-Client-Session")
+        or request.headers.get("X-Device-Session")
+    )
+    if header_value:
+        return str(header_value).strip()[:128] or None
+
+    body = request.get_json(silent=True) or {}
+    if isinstance(body, dict):
+        raw = body.get("sessionId") or body.get("session_id")
+        if raw is not None:
+            return str(raw).strip()[:128] or None
+
+    return None
+
+
+def _client_ip() -> Optional[str]:
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()[:64] or None
+    return request.remote_addr or None
+
+
+def _user_agent() -> Optional[str]:
+    ua = request.headers.get("User-Agent")
+    return ua[:256] if ua else None
+
+
+# --------------------------------------------------------------------
 # Auth helpers
 # --------------------------------------------------------------------
 def _current_user() -> Optional[User]:
     """
     Retrieve authenticated user from g/request context.
-    (Your require_access_token decorator populates these.)
+    (require_access_token populates these.)
     """
     u = getattr(g, "current_user", None)
     if isinstance(u, User):
@@ -77,6 +136,52 @@ def _current_user() -> Optional[User]:
         return u2
 
     return None
+
+
+def _current_admin_uuid() -> Optional[uuid.UUID]:
+    """
+    Extract current admin id as a real UUID for audit writing.
+    """
+    u = _current_user()
+    if u is None:
+        return None
+
+    raw = getattr(u, "id", None) or getattr(u, "user_id", None)
+    if raw is None:
+        return None
+
+    if isinstance(raw, uuid.UUID):
+        return raw
+
+    try:
+        return uuid.UUID(str(raw))
+    except Exception:
+        return None
+
+
+def _current_admin_role_name() -> str:
+    """
+    Best-effort canonical role snapshot for activity logging.
+    """
+    u = _current_user()
+    if u is None:
+        return "admin"
+
+    role_name = getattr(u, "role_name", None)
+    if isinstance(role_name, str) and role_name.strip():
+        return role_name.strip().lower()
+
+    role_raw = getattr(u, "role", None)
+    try:
+        role_int = int(role_raw) if role_raw is not None else ROLE_ADMIN
+    except Exception:
+        role_int = ROLE_ADMIN
+
+    return {
+        ROLE_ADMIN: "admin",
+        ROLE_FARMER: "farmer",
+        ROLE_CUSTOMER: "customer",
+    }.get(role_int, "admin")
 
 
 def _admin_guard() -> Optional[Response]:
@@ -92,6 +197,61 @@ def _admin_guard() -> Optional[Response]:
         return _json({"success": False, "message": "Admin access required"}, 403)
 
     return None
+
+
+# --------------------------------------------------------------------
+# Audit helpers
+# --------------------------------------------------------------------
+def _audit_admin_view(
+    *,
+    action: str,
+    target_type: Optional[str] = None,
+    target_id: Optional[Any] = None,
+    metadata: Optional[dict[str, Any]] = None,
+) -> None:
+    """
+    Write non-governance admin usage to user_activity_events.
+    """
+    admin_uuid = _current_admin_uuid()
+    if admin_uuid is None:
+        return
+
+    AuditLogger.log_user_activity(
+        user_id=admin_uuid,
+        role_name=_current_admin_role_name(),
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        session_id=_request_session_id(),
+        route=request.path,
+        http_method=request.method,
+        ip_address=_client_ip(),
+        user_agent=_user_agent(),
+        metadata_json=metadata or {},
+    )
+
+
+def _audit_admin_governance(
+    *,
+    action: str,
+    entity_type: str,
+    entity_id: Any,
+    metadata: Optional[dict[str, Any]] = None,
+) -> None:
+    """
+    Write privileged admin decisions to admin_audit_log.
+    """
+    admin_uuid = _current_admin_uuid()
+    if admin_uuid is None:
+        return
+
+    AuditLogger.log_admin_event(
+        admin_id=admin_uuid,
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        metadata=metadata or {},
+    )
 
 
 # --------------------------------------------------------------------
@@ -127,13 +287,6 @@ def _status_from_str(s: str) -> Optional[bool]:
     return None
 
 
-def _safe_uuid(s: str) -> Optional[uuid.UUID]:
-    try:
-        return uuid.UUID(str(s))
-    except Exception:
-        return None
-
-
 def _query_users() -> list[dict[str, Any]]:
     """
     Fetch users with optional query/filters.
@@ -144,13 +297,12 @@ def _query_users() -> list[dict[str, Any]]:
       status -> active|inactive
 
     NOTE:
-      Your User model includes deleted_at; we exclude deleted rows here.
+      User model includes deleted_at; we exclude soft-deleted rows here.
     """
     q = (request.args.get("q") or "").strip()
     role = (request.args.get("role") or "").strip()
     status = (request.args.get("status") or "").strip()
 
-    # Exclude soft-deleted users (DB-dump aligned model)
     stmt = select(User).where(User.deleted_at.is_(None))  # type: ignore[attr-defined]
 
     if q:
@@ -204,7 +356,20 @@ def list_users() -> Response:
     if guard is not None:
         return guard
 
-    return _json(_query_users(), 200)
+    payload = _query_users()
+
+    _audit_admin_view(
+        action="admin_list_users",
+        target_type="user",
+        metadata={
+            "q": (request.args.get("q") or "").strip(),
+            "role": (request.args.get("role") or "").strip(),
+            "status": (request.args.get("status") or "").strip(),
+            "result_count": len(payload),
+        },
+    )
+
+    return _json(payload, 200)
 
 
 @admin_users_bp.route("/users/<user_id>/status", methods=["PATCH"])
@@ -212,6 +377,9 @@ def list_users() -> Response:
 def set_user_status(user_id: str) -> Response:
     """
     Toggle active/inactive for a specific user (admin-only).
+
+    This is a privileged governance action and is therefore written to
+    admin_audit_log, not merely user_activity_events.
     """
     guard = _admin_guard()
     if guard is not None:
@@ -232,12 +400,43 @@ def set_user_status(user_id: str) -> Response:
     if user is None:
         return _json({"success": False, "message": "User not found"}, 404)
 
+    before_status = "active" if bool(user.is_active) else "inactive"
+    after_status = "active" if active_val else "inactive"
+
     user.is_active = active_val
     user.updated_at = datetime.utcnow()
     db.session.commit()
 
+    # Governance audit: account state changed by admin
+    _audit_admin_governance(
+        action="update_user_status",
+        entity_type="user",
+        entity_id=str(user.id),
+        metadata={
+            "user_id": str(user.id),
+            "user_email": _safe_str(getattr(user, "email", None)),
+            "user_full_name": _safe_str(getattr(user, "full_name", None)),
+            "user_role": _role_label(getattr(user, "role", None)),
+            "before_status": before_status,
+            "after_status": after_status,
+            "changed_field": "is_active",
+        },
+    )
+
+    # Activity audit: endpoint usage
+    _audit_admin_view(
+        action="admin_update_user_status",
+        target_type="user",
+        target_id=user.id,
+        metadata={
+            "user_id": str(user.id),
+            "before_status": before_status,
+            "after_status": after_status,
+        },
+    )
+
     return _json(
-        {"success": True, "id": str(user.id), "status": "active" if user.is_active else "inactive"},
+        {"success": True, "id": str(user.id), "status": after_status},
         200,
     )
 
@@ -261,6 +460,14 @@ def export_users() -> Response:
 
     data = _query_users()
 
+    common_metadata = {
+        "export_type": export_type,
+        "q": (request.args.get("q") or "").strip(),
+        "role": (request.args.get("role") or "").strip(),
+        "status": (request.args.get("status") or "").strip(),
+        "row_count": len(data),
+    }
+
     # ---------------------------
     # CSV Export (always works)
     # ---------------------------
@@ -280,6 +487,12 @@ def export_users() -> Response:
             )
         out = buf.getvalue().encode("utf-8")
 
+        _audit_admin_view(
+            action="admin_export_users",
+            target_type="report",
+            metadata={**common_metadata, "format_served": "csv"},
+        )
+
         resp = Response(out, mimetype="text/csv")
         resp.headers["Content-Disposition"] = 'attachment; filename="agroconnect-users.csv"'
         return resp
@@ -288,18 +501,25 @@ def export_users() -> Response:
     # PDF Export (ReportLab optional)
     # ---------------------------
     try:
-        # Runtime import only: prevents Pylance import errors in environments
-        # where reportlab isn't installed.
+        # Runtime import only: avoids static editor/type issues if reportlab
+        # is not installed in the active environment.
         from reportlab.lib.pagesizes import A4  # type: ignore[import-not-found]
         from reportlab.pdfgen import canvas  # type: ignore[import-not-found]
     except Exception:
-        # Fallback: plain text export if reportlab isn't available
+        # Fallback: plain text export if reportlab is unavailable
         out = "\n".join(
             [
                 f"{u.get('full_name')} | {u.get('email')} | {u.get('role')} | {u.get('status')}"
                 for u in data
             ]
         )
+
+        _audit_admin_view(
+            action="admin_view_users_export_pdf_fallback",
+            target_type="report",
+            metadata={**common_metadata, "format_served": "txt_fallback"},
+        )
+
         resp = Response(out.encode("utf-8"), mimetype="text/plain")
         resp.headers["Content-Disposition"] = 'attachment; filename="agroconnect-users.txt"'
         return resp
@@ -324,7 +544,7 @@ def export_users() -> Response:
 
     # Rows
     c.setFont("Helvetica", 9)
-    for u in data[:250]:  # keep PDF readable
+    for u in data[:250]:  # Keep PDF readable
         if y < 60:
             c.showPage()
             y = h_page - 60
@@ -340,6 +560,12 @@ def export_users() -> Response:
 
     c.showPage()
     c.save()
+
+    _audit_admin_view(
+        action="admin_export_users",
+        target_type="report",
+        metadata={**common_metadata, "format_served": "pdf"},
+    )
 
     resp = Response(pdf_bytes.getvalue(), mimetype="application/pdf")
     resp.headers["Content-Disposition"] = 'attachment; filename="agroconnect-users.pdf"'

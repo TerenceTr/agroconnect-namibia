@@ -2,18 +2,16 @@
 // frontend/src/components/auth/AuthProvider.jsx — AgroConnect Namibia
 // ----------------------------------------------------------------------------
 // FILE ROLE:
-//   Owns authentication state (user + tokens) for the frontend.
+//   Central authentication provider for the web interface.
 //
-// RESPONSIBILITIES:
-//   • Stores user + tokens (access + refresh)
-//   • Exposes login/logout helpers
-//   • Keeps Axios Authorization defaults in sync (setApiAuthHeader)
-//   • Optionally triggers manual refresh (attemptRefresh)
-//   • Initializes Socket.IO connection using the access token
-//   • Listens for "auth:logout" events fired by api.js when refresh fails
-//
-// DOES NOT DO:
-//   ❌ No navigation / redirects (pages decide where to redirect)
+// THIS VERSION IMPROVES:
+//   • Restores sessions from stored tokens with a lightweight user snapshot
+//   • Auto-authenticates after registration so users land directly in the
+//     correct dashboard without an unnecessary extra login step
+//   • Keeps password reset helpers for the shared auth dialog
+//   • Handles forced logout events from the shared API layer
+//   • Clears local session state immediately on logout for faster UX
+//   • Prefetches role-specific dashboard bundles after auth success
 // ============================================================================
 
 import React, {
@@ -22,229 +20,394 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
-} from "react";
-
-import io from "socket.io-client";
+} from 'react';
 
 import api, {
-  API_ROOT,
   clearTokens,
   getAccessToken,
   getRefreshToken,
-  refreshAccessToken,
+  normalizeTokenResponse,
   setApiAuthHeader,
   setTokens,
-} from "../../api";
+} from '../../api';
 
 const AuthContext = createContext(null);
+const USER_SNAPSHOT_KEY = 'ac_user_snapshot';
 
-const STORAGE_KEYS = {
-  user: "user",
-};
+function safeRoleName(userLike) {
+  const roleName = String(userLike?.role_name || userLike?.roleName || '')
+    .trim()
+    .toLowerCase();
 
-function safeJsonParse(value) {
+  if (roleName) return roleName;
+
+  const roleNum = Number(
+    userLike?.role ?? userLike?.role_id ?? userLike?.roleId ?? NaN
+  );
+
+  if (roleNum === 1) return 'admin';
+  if (roleNum === 2) return 'farmer';
+  if (roleNum === 3) return 'customer';
+  return '';
+}
+
+function normalizeUser(userLike) {
+  if (!userLike || typeof userLike !== 'object') return null;
+
+  const user = { ...userLike };
+  const roleName = safeRoleName(userLike);
+
+  if (roleName && !user.role_name) {
+    user.role_name = roleName;
+  }
+
+  return user;
+}
+
+function extractUserPayload(data) {
+  return normalizeUser(
+    data?.user || data?.data?.user || data?.profile || data?.data || null
+  );
+}
+
+function authErrorMessage(error, fallback) {
+  const status = Number(error?.response?.status || 0);
+
+  if (status === 404) {
+    return 'This auth feature is not available on the current backend yet.';
+  }
+
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback
+  );
+}
+
+function saveUserSnapshot(userLike) {
   try {
-    return JSON.parse(value);
+    if (typeof window === 'undefined') return;
+    const normalized = normalizeUser(userLike);
+    if (!normalized) {
+      window.localStorage.removeItem(USER_SNAPSHOT_KEY);
+      return;
+    }
+    window.localStorage.setItem(USER_SNAPSHOT_KEY, JSON.stringify(normalized));
+  } catch {
+    // Ignore storage problems.
+  }
+}
+
+function readUserSnapshot() {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(USER_SNAPSHOT_KEY);
+    if (!raw) return null;
+    return normalizeUser(JSON.parse(raw));
   } catch {
     return null;
   }
 }
 
-function normalizeAuthResponse(data) {
-  return {
-    accessToken: data?.accessToken || data?.token || data?.access_token || null,
-    refreshToken: data?.refreshToken || data?.refresh_token || null,
-    user: data?.user || null,
-  };
+function clearUserSnapshot() {
+  try {
+    if (typeof window === 'undefined') return;
+    window.localStorage.removeItem(USER_SNAPSHOT_KEY);
+  } catch {
+    // Ignore storage problems.
+  }
 }
 
-// Socket host: API_ROOT is ".../api" → remove "/api"
-const SOCKET_BASE = API_ROOT.replace(/\/api$/, "");
+function preloadDashboardForRole(userLike) {
+  const role = safeRoleName(userLike);
+
+  try {
+    if (role === 'admin') {
+      void import('../../pages/dashboards/admin/AdminDashboard');
+      return;
+    }
+
+    if (role === 'farmer') {
+      void import('../../pages/dashboards/farmer/FarmerDashboard');
+      return;
+    }
+
+    if (role === 'customer') {
+      void import('../../pages/dashboards/customer/CustomerDashboard');
+    }
+  } catch {
+    // Prefetch is best-effort only.
+  }
+}
+
+function applyAuthenticatedSession(data, setUser) {
+  const tokenPayload = normalizeTokenResponse(data || {});
+  const nextUser = extractUserPayload(data || {});
+
+  if (!tokenPayload?.accessToken) {
+    if (nextUser) {
+      setUser(nextUser);
+      saveUserSnapshot(nextUser);
+      preloadDashboardForRole(nextUser);
+    }
+    return { user: nextUser, hasSession: false };
+  }
+
+  setTokens(tokenPayload);
+  setApiAuthHeader(tokenPayload.accessToken);
+  setUser(nextUser);
+  saveUserSnapshot(nextUser);
+  preloadDashboardForRole(nextUser);
+
+  return { user: nextUser, hasSession: true };
+}
 
 export function AuthProvider({ children }) {
-  // ---------------------------------------------------------------------------
-  // Bootstrap from storage
-  // ---------------------------------------------------------------------------
-  const [token, setToken] = useState(() => getAccessToken());
-  const [refreshToken, setRefreshToken] = useState(() => getRefreshToken());
-  const [user, setUser] = useState(() => safeJsonParse(localStorage.getItem(STORAGE_KEYS.user)));
+  const [user, setUser] = useState(() => readUserSnapshot());
+  const [loading, setLoading] = useState(true);
+  const [authBusy, setAuthBusy] = useState(false);
 
-  const [loading, setLoading] = useState(false);
-
-  // Keep socket instance in a ref (prevents stale closures)
-  const socketRef = useRef(null);
-
-  // ---------------------------------------------------------------------------
-  // Keep Axios defaults in sync
-  // (api.js attaches token per request; this also helps for defaults)
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    setApiAuthHeader(token);
-  }, [token]);
-
-  // ---------------------------------------------------------------------------
-  // Handle forced logout events from api.js
-  // (e.g., refresh token expired)
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const onLogoutEvent = () => {
-      // No navigation here — just clear state.
-      doLogout();
-    };
-
-    window.addEventListener("auth:logout", onLogoutEvent);
-    return () => window.removeEventListener("auth:logout", onLogoutEvent);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Socket initializer (disconnect prior connection)
-  // ---------------------------------------------------------------------------
-  const initSocket = useCallback((jwt) => {
-    if (!jwt) return;
-
-    // Disconnect old socket (if any)
-    if (socketRef.current) {
-      try {
-        socketRef.current.disconnect();
-      } catch {
-        // ignore
-      }
-    }
-
-    socketRef.current = io(SOCKET_BASE, {
-      transports: ["polling"], // safe default for many hosting environments
-      upgrade: false,
-      auth: { token: jwt },
-    });
-  }, []);
-
-  // Boot socket when we have a token + user
-  useEffect(() => {
-    if (token && user) initSocket(token);
-
-    return () => {
-      if (socketRef.current) {
-        try {
-          socketRef.current.disconnect();
-        } catch {
-          // ignore
-        }
-      }
-    };
-  }, [token, user, initSocket]);
-
-  // ---------------------------------------------------------------------------
-  // Persist auth state helpers
-  // ---------------------------------------------------------------------------
-  const persistUser = useCallback((u) => {
-    if (u) {
-      localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(u));
-      setUser(u);
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.user);
-      setUser(null);
-    }
-  }, []);
-
-  const persistTokens = useCallback(({ accessToken, refreshToken: rt }) => {
-    if (accessToken || rt) {
-      setTokens({ accessToken: accessToken || null, refreshToken: rt || null });
-    }
-
-    setToken(accessToken || null);
-    setRefreshToken(rt || null);
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Logout (NO navigation here)
-  // ---------------------------------------------------------------------------
-  const doLogout = useCallback(() => {
+  const clearLocalSession = useCallback(() => {
     clearTokens();
-    localStorage.removeItem(STORAGE_KEYS.user);
-
-    setToken(null);
-    setRefreshToken(null);
+    clearUserSnapshot();
+    setApiAuthHeader(null);
     setUser(null);
+  }, []);
 
-    if (socketRef.current) {
-      try {
-        socketRef.current.disconnect();
-      } catch {
-        // ignore
+  const hydrateCurrentUser = useCallback(async () => {
+    const accessToken = getAccessToken();
+    const snapshot = readUserSnapshot();
+
+    if (!accessToken) {
+      clearLocalSession();
+      setLoading(false);
+      return null;
+    }
+
+    if (snapshot) {
+      setUser(snapshot);
+      preloadDashboardForRole(snapshot);
+    }
+
+    setApiAuthHeader(accessToken);
+
+    try {
+      const response = await api.get('auth/me');
+      const nextUser = extractUserPayload(response?.data);
+      setUser(nextUser);
+      saveUserSnapshot(nextUser);
+      preloadDashboardForRole(nextUser);
+      return nextUser;
+    } catch {
+      clearLocalSession();
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [clearLocalSession]);
+
+  useEffect(() => {
+    void hydrateCurrentUser();
+  }, [hydrateCurrentUser]);
+
+  useEffect(() => {
+    const handleForcedLogout = () => {
+      clearLocalSession();
+      setLoading(false);
+    };
+
+    window.addEventListener('auth:logout', handleForcedLogout);
+    return () => window.removeEventListener('auth:logout', handleForcedLogout);
+  }, [clearLocalSession]);
+
+  const login = useCallback(async ({ email, password, identifier }) => {
+    setAuthBusy(true);
+
+    try {
+      const payload = {
+        email: String(email || '').trim().toLowerCase(),
+        password: String(password || ''),
+        identifier: String(identifier || '').trim(),
+      };
+
+      const response = await api.post('auth/login', payload, {
+        skipAuth: true,
+      });
+
+      const data = response?.data || {};
+      const { user: nextUser, hasSession } = applyAuthenticatedSession(
+        data,
+        setUser
+      );
+
+      if (!hasSession) {
+        throw new Error('Login succeeded but no access token was returned.');
       }
-      socketRef.current = null;
+
+      return nextUser;
+    } catch (error) {
+      clearLocalSession();
+      throw new Error(authErrorMessage(error, 'Login failed.'));
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [clearLocalSession]);
+
+  const register = useCallback(async (payload) => {
+    setAuthBusy(true);
+
+    try {
+      const body = {
+        full_name: String(payload?.full_name || '').trim(),
+        email: String(payload?.email || '').trim().toLowerCase(),
+        phone: String(payload?.phone || '').trim(),
+        location: String(payload?.location || '').trim(),
+        password: String(payload?.password || ''),
+        role: Number(payload?.role || 2),
+      };
+
+      const response = await api.post('auth/register', body, {
+        skipAuth: true,
+      });
+
+      const data = response?.data || {};
+      const directSession = applyAuthenticatedSession(data, setUser);
+
+      if (directSession.hasSession) {
+        return directSession.user;
+      }
+
+      const loginResponse = await api.post(
+        'auth/login',
+        {
+          email: body.email,
+          password: body.password,
+          identifier: body.email,
+        },
+        { skipAuth: true }
+      );
+
+      const fallbackData = loginResponse?.data || {};
+      const fallbackSession = applyAuthenticatedSession(fallbackData, setUser);
+
+      if (!fallbackSession.hasSession) {
+        throw new Error(
+          'Account created, but automatic sign-in could not complete.'
+        );
+      }
+
+      return fallbackSession.user;
+    } catch (error) {
+      clearLocalSession();
+      throw new Error(authErrorMessage(error, 'Registration failed.'));
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [clearLocalSession]);
+
+  const logout = useCallback(async () => {
+    const refreshToken = getRefreshToken();
+
+    clearLocalSession();
+    setLoading(false);
+
+    if (refreshToken) {
+      void api
+        .post(
+          'auth/logout',
+          { refreshToken, refresh_token: refreshToken },
+          { skipAuth: true }
+        )
+        .catch(() => {
+          // Explicit logout should still complete locally.
+        });
+    }
+  }, [clearLocalSession]);
+
+  const requestPasswordReset = useCallback(async (email) => {
+    setAuthBusy(true);
+
+    try {
+      const response = await api.post(
+        'auth/forgot-password',
+        { email: String(email || '').trim().toLowerCase() },
+        { skipAuth: true }
+      );
+      return response?.data || {};
+    } catch (error) {
+      throw new Error(
+        authErrorMessage(error, 'Could not start password reset.')
+      );
+    } finally {
+      setAuthBusy(false);
     }
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Login
-  // ---------------------------------------------------------------------------
-  const login = useCallback(
-    async (credentials) => {
-      setLoading(true);
+  const resetPassword = useCallback(
+    async ({ token, password, confirmPassword }) => {
+      setAuthBusy(true);
+
       try {
-        const { data } = await api.post("/auth/login", credentials);
-        const normalized = normalizeAuthResponse(data);
+        const response = await api.post(
+          'auth/reset-password',
+          {
+            token: String(token || '').trim(),
+            password: String(password || ''),
+            confirmPassword: String(confirmPassword || ''),
+            confirm_password: String(confirmPassword || ''),
+          },
+          { skipAuth: true }
+        );
 
-        // Persist user + tokens
-        persistUser(normalized.user);
-        persistTokens({
-          accessToken: normalized.accessToken,
-          refreshToken: normalized.refreshToken,
-        });
-
-        // Start socket for realtime events
-        if (normalized.accessToken) initSocket(normalized.accessToken);
-
-        return normalized.user;
+        return response?.data || {};
+      } catch (error) {
+        throw new Error(authErrorMessage(error, 'Could not reset password.'));
       } finally {
-        setLoading(false);
+        setAuthBusy(false);
       }
     },
-    [persistUser, persistTokens, initSocket]
+    []
   );
-
-  // ---------------------------------------------------------------------------
-  // Manual refresh (optional for ProtectedRoute or other guard)
-  // NOTE: api.js already refreshes automatically on 401.
-  // ---------------------------------------------------------------------------
-  const attemptRefresh = useCallback(async () => {
-    const rt = refreshToken || getRefreshToken();
-    if (!rt) throw new Error("No refresh token available");
-
-    const data = await refreshAccessToken(rt);
-    const newAccess = data?.accessToken || data?.token || data?.access_token || null;
-    const newRefresh = data?.refreshToken || data?.refresh_token || rt;
-
-    if (!newAccess) throw new Error("Refresh response missing access token");
-
-    persistTokens({ accessToken: newAccess, refreshToken: newRefresh });
-
-    // Keep socket auth fresh
-    initSocket(newAccess);
-
-    return newAccess;
-  }, [refreshToken, persistTokens, initSocket]);
 
   const value = useMemo(
     () => ({
       user,
-      token,
-      refreshToken,
-      loading,
+      loading: loading || authBusy,
+      authBootstrapping: loading,
+      isAuthenticated: !!user && !!getAccessToken(),
       login,
-      logout: doLogout,
-      attemptRefresh,
-      socket: socketRef.current,
-      isAuthenticated: Boolean(token && user),
+      register,
+      logout,
+      requestPasswordReset,
+      resetPassword,
+      refreshUser: hydrateCurrentUser,
     }),
-    [user, token, refreshToken, loading, login, doLogout, attemptRefresh]
+    [
+      user,
+      loading,
+      authBusy,
+      login,
+      register,
+      logout,
+      requestPasswordReset,
+      resetPassword,
+      hydrateCurrentUser,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+
+  if (!ctx) {
+    throw new Error('useAuth must be used inside <AuthProvider>.');
+  }
+
+  return ctx;
+}
+
+export default AuthProvider;

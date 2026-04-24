@@ -7,6 +7,10 @@
 # KEY FIX:
 #   Socket.IO should NOT attempt Redis unless REDIS_URL is explicitly set
 #   AND reachable. This prevents "Cannot receive from redis..." spam in dev.
+#
+# DESIGN:
+#   • bcrypt: supports flask-bcrypt (preferred) OR bcrypt (fallback)
+#   • socketio: threading async_mode (Windows/dev-friendly)
 # ============================================================================
 
 from __future__ import annotations
@@ -14,10 +18,10 @@ from __future__ import annotations
 import logging
 import os
 import socket
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
-from flask.app import Flask
+from flask import Flask
 from flask_migrate import Migrate
 from flask_socketio import SocketIO
 
@@ -54,6 +58,7 @@ class SafeBcrypt:
         if not isinstance(password, str):
             password = str(password)
 
+        # Preferred path
         if self._impl is not None:
             out = self._impl.generate_password_hash(password)
             if isinstance(out, (bytes, bytearray)):
@@ -62,6 +67,7 @@ class SafeBcrypt:
                 return out.encode("utf-8")
             raise RuntimeError("flask-bcrypt returned unexpected hash type")
 
+        # Fallback path
         if _bcrypt is None:
             raise RuntimeError("Install 'flask-bcrypt' or 'bcrypt' for password hashing.")
 
@@ -74,12 +80,14 @@ class SafeBcrypt:
         if not isinstance(password, str):
             password = str(password)
 
+        # Preferred path
         if self._impl is not None:
             try:
                 return bool(self._impl.check_password_hash(pw_hash, password))
             except Exception:
                 return False
 
+        # Fallback path
         if _bcrypt is None:
             return False
 
@@ -125,12 +133,14 @@ def init_socketio(app: Flask, *, cors_allowed_origins: Any = "*") -> None:
     """
     redis_url = (os.getenv("REDIS_URL") or "").strip() or None
 
-    if redis_url and _redis_reachable(redis_url):
+    reachable = bool(redis_url) and _redis_reachable(redis_url) if redis_url else False
+
+    if redis_url and reachable:
         logger.info("✅ Socket.IO using Redis queue: %s", redis_url)
         socketio.init_app(app, cors_allowed_origins=cors_allowed_origins, message_queue=redis_url)
         return
 
-    if redis_url and not _redis_reachable(redis_url):
+    if redis_url and not reachable:
         logger.warning("⚠️ REDIS_URL is set but Redis is not reachable. Starting without Redis queue.")
 
     socketio.init_app(app, cors_allowed_origins=cors_allowed_origins)

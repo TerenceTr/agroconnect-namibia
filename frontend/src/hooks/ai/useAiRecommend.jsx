@@ -1,4 +1,12 @@
-// src/hooks/ai/useAiRecommend.js
+// ============================================================================
+// frontend/src/hooks/ai/useAiRecommend.js
+// ----------------------------------------------------------------------------
+// FILE ROLE:
+//   Hook to fetch AI product recommendations.
+//   • getRecommendations({ buyer_id, recent_product_ids, k })
+//   • Normalizes response shape into: { recommendations: [...] }
+// ============================================================================
+
 import { useState, useCallback } from "react";
 import API from "./aiClient";
 
@@ -19,12 +27,20 @@ export function useAiRecommend() {
           k,
         });
 
-        // Ensure consistent shape
-        const out = data?.recommendations ? data : { recommendations: data || [] };
+        // Normalize:
+        // if backend returns { recommendations: [...] } keep it
+        // else wrap array into the expected object
+        const out =
+          data?.recommendations != null ? data : { recommendations: data || [] };
+
         setRecommendations(out);
         return out;
       } catch (err) {
-        const msg = err?.response?.data?.error || err.message || "Recommendation failed";
+        const msg =
+          err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Recommendation failed";
         setError(msg);
         return null;
       } finally {

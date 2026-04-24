@@ -4,11 +4,13 @@
 // FILE ROLE:
 //   Recent orders panel for FarmerDashboard.
 //
-// RESPONSIBILITIES:
-//   • Show newest orders with fulfillment + payment badges
+// UX FIX (THIS UPDATE):
+//   • First-load-only loading:
+//       - show “Loading…” only before first resolved fetch
+//       - during refetch keep existing orders visible (no flicker)
 // ============================================================================
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Wallet } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -30,7 +32,25 @@ import {
   titleCase,
 } from "./utils";
 
+/**
+ * Local first-load gate:
+ * - once loading turns false once, we never show the loader again
+ * - parent should keep previous data during refetch; this prevents “Loading…” flicker
+ */
+function useFirstLoadOnly(loading) {
+  const [painted, setPainted] = useState(false);
+
+  useEffect(() => {
+    if (!painted && !loading) setPainted(true);
+  }, [loading, painted]);
+
+  return painted;
+}
+
 export default function RecentOrdersCard({ loading, orders, days }) {
+  const painted = useFirstLoadOnly(loading);
+  const showLoading = loading && !painted;
+
   return (
     <Card variant="surface">
       <CardHeader>
@@ -49,7 +69,7 @@ export default function RecentOrdersCard({ loading, orders, days }) {
       </CardHeader>
 
       <CardContent>
-        {loading ? (
+        {showLoading ? (
           <p className="text-sm text-slate-500">Loading…</p>
         ) : orders.length === 0 ? (
           <EmptyState message="No recent orders in this time window." />
@@ -67,9 +87,7 @@ export default function RecentOrdersCard({ loading, orders, days }) {
                   className="p-3 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md transition flex items-start justify-between gap-3"
                 >
                   <div className="min-w-0">
-                    <div className="font-semibold text-slate-900 truncate">
-                      {getOrderProductName(o)}
-                    </div>
+                    <div className="font-semibold text-slate-900 truncate">{getOrderProductName(o)}</div>
 
                     <div className="text-xs text-slate-500 mt-1">
                       {getOrderBuyerLabel(o)} • {when ? format(when, "dd MMM yyyy") : "—"}

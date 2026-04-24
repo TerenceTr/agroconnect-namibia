@@ -1,9 +1,18 @@
-// src/components/ai/ForecastChart.jsx
-import React, { useEffect } from "react";
+// ============================================================================
+// frontend/src/components/ai/ForecastChart.jsx
+// ----------------------------------------------------------------------------
+// FILE ROLE:
+//   Customer-facing AI forecast visualization.
+//   • Calls AI forecast hook with (product_type, region, horizon_days)
+//   • Renders a simple line chart using recharts
+//   • Fully null-safe (won't crash if backend returns unexpected shape)
+//
+// UI NOTE:
+//   This component is commonly rendered inside a parent <Card> already.
+//   So we support a "readOnly" + "embed" style by keeping visuals minimal.
+// ============================================================================
 
-// Correct path: src/components/ui/Card.jsx
-import { Card, CardHeader, CardTitle, CardContent } from "../ui/Card";
-
+import React, { useEffect, useMemo } from "react";
 import { Loader2, TrendingUp } from "lucide-react";
 
 import { useAiForecast } from "../../hooks/ai/useAiForecast";
@@ -18,82 +27,104 @@ import {
   CartesianGrid,
 } from "recharts";
 
-export default function ForecastChart({ product, region = null, horizon = 14 }) {
+function safeArray(x) {
+  return Array.isArray(x) ? x : [];
+}
+
+export default function ForecastChart({
+  product,
+  region = null,
+  horizon = 14,
+  readOnly = false,
+}) {
   const { getForecast, forecast, loading, error } = useAiForecast();
 
   // Accept product as string or object
-  const productName = product
-    ? typeof product === "string"
-      ? product
-      : product.name || product.title || ""
-    : null;
+  const productName = useMemo(() => {
+    if (!product) return null;
+    if (typeof product === "string") return product.trim() || null;
+    return (product?.name || product?.title || "").trim() || null;
+  }, [product]);
 
   useEffect(() => {
-    if (productName) {
-      getForecast({
-        product_type: productName,
-        region,
-        horizon_days: horizon,
-      });
-    }
+    if (!productName) return;
+
+    getForecast({
+      product_type: productName,
+      region,
+      horizon_days: horizon,
+    });
   }, [productName, region, horizon, getForecast]);
 
-  return (
-    <Card className="rounded-2xl shadow-md">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-primary" />
-          {productName
-            ? `${productName} Price Forecast`
-            : "Forecast"}
-        </CardTitle>
-      </CardHeader>
+  const points = useMemo(() => {
+    // Common shapes:
+    //   { daily_predictions: [{date, price}] }
+    //   { predictions: [...] }
+    //   [...] directly
+    return safeArray(
+      forecast?.daily_predictions || forecast?.predictions || forecast
+    );
+  }, [forecast]);
 
-      <CardContent>
+  return (
+    <div className="space-y-3">
+      {!readOnly && (
+        <div className="flex items-center justify-between">
+          <div className="inline-flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-emerald-700" />
+            <div className="text-sm font-extrabold text-slate-900">
+              {productName ? `${productName} Price Forecast` : "Forecast"}
+            </div>
+          </div>
+          <div className="text-xs font-semibold text-slate-500">
+            {horizon} days
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-3">
         {loading && (
           <div className="flex items-center justify-center py-10">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
           </div>
         )}
 
-        {error && (
-          <div className="text-red-600 text-sm py-4 text-center">
-            Error: {error}
+        {!loading && error && (
+          <div className="text-rose-700 text-sm py-4 text-center">
+            {String(error)}
           </div>
         )}
 
-        {!loading && !forecast && !error && (
-          <div className="text-gray-500 text-sm py-6 text-center">
+        {!loading && !error && points.length === 0 && (
+          <div className="text-slate-500 text-sm py-6 text-center">
             No forecast available — select a product to generate a forecast.
           </div>
         )}
 
-        {forecast &&
-          Array.isArray(forecast.daily_predictions) && (
-            <div className="w-full h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={forecast.daily_predictions}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="price"
-                    stroke="#10B981"
-                    strokeWidth={3}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+        {!loading && !error && points.length > 0 && (
+          <div className="w-full h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={points}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip />
+                <Line
+                  type="monotone"
+                  dataKey="price"
+                  stroke="#10B981"
+                  strokeWidth={3}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
 
-              <p className="text-xs text-gray-500 mt-3 text-right">
-                {forecast.from_cache
-                  ? "Loaded from cache"
-                  : "Generated fresh"}
-              </p>
+            <div className="text-xs text-slate-500 mt-2 text-right">
+              {forecast?.from_cache ? "Loaded from cache" : "Generated fresh"}
             </div>
-          )}
-      </CardContent>
-    </Card>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

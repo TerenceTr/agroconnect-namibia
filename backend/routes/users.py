@@ -35,7 +35,7 @@ from sqlalchemy import select
 
 from backend.database.db import db
 from backend.models.user import User
-from backend.utils.validators import validate_phone
+from backend.utils.validators import validate_phone as _validate_phone
 
 # Registered with url_prefix="/api/users" in backend/routes/__init__.py
 users_bp = Blueprint("users", __name__)
@@ -56,6 +56,80 @@ def _json_ok(payload: dict[str, Any], status: int = 200) -> Any:
     resp = jsonify({"success": True, **payload})
     resp.status_code = status
     return resp
+
+
+# --------------------------------------------------------------------
+# Phone normalization policy
+# --------------------------------------------------------------------
+# STORAGE RULE:
+#   • users.phone must remain in the local Namibia display form: 081xxxxxxx
+#   • USSD channel records may keep +264... elsewhere
+#
+# This route therefore accepts either local or E.164 input and normalizes it to
+# the local form before persisting anything into `users.phone`.
+# --------------------------------------------------------------------
+def _phone_digits(raw: Any) -> str:
+    return "".join(ch for ch in str(raw or "") if ch.isdigit())
+
+
+def _phone_to_local(raw: Any) -> Optional[str]:
+    digits = _phone_digits(raw)
+    if not digits:
+        return None
+
+    candidate: Optional[str] = None
+    if len(digits) == 10 and digits.startswith(("081", "083", "085")):
+        candidate = digits
+    elif len(digits) == 12 and digits.startswith(("26481", "26483", "26485")):
+        candidate = f"0{digits[3:]}"
+
+    if not candidate:
+        return None
+
+    phone = _validate_phone(candidate)
+    if not phone:
+        return None
+    return phone
+
+
+def _phone_to_e164(raw: Any) -> Optional[str]:
+    local = _phone_to_local(raw)
+    if not local:
+        return None
+    return f"+264{local[1:]}"
+
+
+def _phone_to_key(raw: Any) -> Optional[str]:
+    e164 = _phone_to_e164(raw)
+    return _phone_digits(e164) if e164 else None
+
+
+def _phone_candidates(raw: Any) -> list[str]:
+    local = _phone_to_local(raw)
+    e164 = _phone_to_e164(raw)
+    key = _phone_to_key(raw)
+
+    values: list[str] = []
+    for candidate in (raw, local, e164, key, f"+{key}" if key else None):
+        text_value = str(candidate).strip() if candidate is not None else ""
+        if text_value and text_value not in values:
+            values.append(text_value)
+    return values
+
+
+def _normalize_user_phone(raw: Any) -> Optional[str]:
+    return _phone_to_local(raw)
+
+
+def _phone_conflict(raw: Any, *, exclude_user_id: Optional[uuid.UUID] = None) -> Optional[User]:
+    candidates = _phone_candidates(raw)
+    if not candidates:
+        return None
+
+    stmt = select(User).where(User.phone.in_(candidates))
+    if exclude_user_id is not None:
+        stmt = stmt.where(User.id != exclude_user_id)
+    return db.session.scalars(stmt).first()
 
 
 # --------------------------------------------------------------------
@@ -180,14 +254,12 @@ def update_user(user_id: str) -> Any:
     # Phone (validated + unique)
     # ----------------------------
     if "phone" in data:
-        validated_phone = validate_phone(data.get("phone"))
+        validated_phone = _normalize_user_phone(data.get("phone"))
         if validated_phone is None:
             return _json_error("Invalid phone number", 400)
 
         # Unique check (excluding self)
-        existing = db.session.scalars(
-            select(User).where(User.phone == validated_phone, User.id != user.id)
-        ).first()
+        existing = _phone_conflict(validated_phone, exclude_user_id=user.id)
         if existing is not None:
             return _json_error("Phone already in use", 409)
 

@@ -12,10 +12,15 @@
 #   • UTC-aware exp/iat (timezone-aware datetimes)
 #   • TypedDict-safe decode (callers use .get() instead of ["sub"])
 #
-# PYRIGHT / PYDANCE NOTES:
-#   • PyJWT's stubs can be loose/strict depending on version.
-#   • jwt.encode may return str (PyJWT v2+) or bytes (older) → normalize.
-#   • jwt.decode returns dict[str, Any] → cast to a TypedDict with total=False.
+# PYRIGHT / PYLANCE NOTES (WHY THIS FILE EXISTS):
+#   PyJWT type stubs vary by version.
+#   Common stub issue fixed here:
+#     - jwt.decode(..., algorithms=...) expects list[str] | None
+#       but some code passes Sequence[str] which triggers:
+#         "Argument of type 'Sequence[str]' cannot be assigned to 'list[str] | None'"
+#
+#   FIX:
+#     Always pass a concrete list[str] to algorithms.
 # ====================================================================
 
 from __future__ import annotations
@@ -40,7 +45,14 @@ class DecodedJWT(TypedDict, total=False):
     purpose: str
     sub: str
 
+    # Optional compatibility claims (some code may use these)
+    user_id: str
+    id: str
 
+
+# --------------------------------------------------------------------
+# Internal helpers
+# --------------------------------------------------------------------
 def _get_secret() -> str:
     """
     Read JWT secret from Flask config.
@@ -56,18 +68,21 @@ def _get_secret() -> str:
 
 def _ensure_str(token: Any) -> str:
     """
-    Normalize token output to str across PyJWT versions.
+    Normalize jwt.encode output to str across PyJWT versions.
 
     PyJWT v2+: returns str
-    Older / some stubs: may be bytes
+    Older versions/stubs: may be bytes
     """
     if isinstance(token, str):
         return token
     if isinstance(token, (bytes, bytearray)):
-        return token.decode("utf-8")
+        return bytes(token).decode("utf-8", errors="ignore")
     return str(token)
 
 
+# --------------------------------------------------------------------
+# Public API
+# --------------------------------------------------------------------
 def jwt_encode(
     payload: Mapping[str, Any],
     *,
@@ -79,18 +94,20 @@ def jwt_encode(
 
     Args:
         payload:
-          Should include at least {"sub": "<uuid-string>"}.
-          (We do not enforce it here to keep this utility generic.)
+          Typically includes {"sub": "<uuid-string>"}.
+          (We keep this utility generic; enforcement happens in auth routes.)
         purpose:
           "access" or "refresh"
         hours:
-          token validity window
+          token validity window (clamped to >= 1)
 
     Returns:
         JWT token string.
     """
+    hours_i = int(hours) if int(hours) >= 1 else 1
+
     now = dt.datetime.now(timezone.utc)
-    exp = now + dt.timedelta(hours=int(hours))
+    exp = now + dt.timedelta(hours=hours_i)
 
     # Copy user payload into claims and add standard/custom fields.
     claims: Dict[str, Any] = dict(payload)
@@ -108,9 +125,21 @@ def jwt_decode(token: str) -> DecodedJWT:
 
     Raises:
         jwt.ExpiredSignatureError, jwt.InvalidTokenError, etc.
-    """
-    decoded = jwt.decode(token, _get_secret(), algorithms=["HS256"])
 
-    # jwt.decode returns a dict-like; we cast to our TypedDict.
-    # Callers should use decoded.get("sub") and decoded.get("purpose").
+    TYPE CHECKER FIX:
+        Pass a concrete list[str] to `algorithms` to satisfy stricter stubs.
+    """
+    decoded = jwt.decode(
+        token,
+        _get_secret(),
+        algorithms=["HS256"],  # ✅ list[str] (NOT Sequence[str]) for Pyright/Pylance
+        options={
+            # Keep defaults safe; caller decides how to handle errors.
+            "verify_signature": True,
+            "verify_exp": True,
+        },
+    )
+
+    # jwt.decode returns Mapping[str, Any]; we cast to our TypedDict(total=False).
+    # Callers should use decoded.get("sub") / decoded.get("purpose").
     return cast(DecodedJWT, decoded)

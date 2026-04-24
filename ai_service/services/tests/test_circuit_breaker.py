@@ -1,5 +1,5 @@
 import pytest
-from services.circuit_breaker import RedisCircuitBreaker, CircuitBreakerConfig
+from ai_service.services.circuit_breaker import RedisCircuitBreaker, CircuitBreakerConfig
 
 @pytest.mark.asyncio
 async def test_circuit_opens_on_failures(fake_redis):

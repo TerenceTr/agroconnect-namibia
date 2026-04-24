@@ -1,22 +1,23 @@
-# ====================================================================
+# ============================================================================
 # backend/services/analytics_service.py — Analytics Aggregation Layer (C1 + Multi-item)
-# ====================================================================
-# ✅ FILE ROLE:
+# ============================================================================
+# FILE ROLE:
 #   Read-only analytics aggregation for dashboards + AI inputs.
 #   Returns JSON-serializable dicts/lists (NO ORM objects).
 #
-# ✅ WHY THIS FILE WAS UPDATED:
-#   Multi-item schema means sales volume is stored in order_items.
-#   So any "orders per product" / "recent orders" must join:
-#     products <- order_items -> orders
-# ====================================================================
+# WHY THIS VERSION EXISTS:
+#   ✅ Fixes the farmer-ranking / weekly-top-farmers 500 errors
+#   ✅ Uses typing.cast for Python typing
+#   ✅ Uses SQLAlchemy cast as sa_cast only for SQL expressions
+#   ✅ Keeps order timestamp handling robust across model aliases
+# ============================================================================
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, cast
 
-from sqlalchemy import DateTime, cast, func, select
+from sqlalchemy import DateTime, cast as sa_cast, func, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from backend.database.db import db
@@ -30,12 +31,22 @@ except Exception:  # pragma: no cover
     Rating = None  # type: ignore[assignment]
 
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+def utc_now_naive() -> datetime:
+    """
+    Keep analytics window timestamps naive because orders.order_date in the
+    current database is timestamp without time zone.
+    """
+    return datetime.utcnow()
 
 
 def _order_timestamp_column() -> ColumnElement[Any]:
-    """Resolve an Order timestamp column robustly."""
+    """
+    Resolve an Order timestamp column robustly.
+
+    CRITICAL FIX:
+    The previous version accidentally called SQLAlchemy cast(...) here instead
+    of typing.cast(...), which caused the runtime 500 on Order.order_date.
+    """
     for name in ("order_date", "created_at", "created_on"):
         col = getattr(Order, name, None)
         if col is not None:
@@ -57,10 +68,9 @@ def get_ranking_inputs(window_days: int = 30, top_n: int = 10) -> Dict[str, Any]
     window_days = max(int(window_days), 1)
     top_n = max(int(top_n), 1)
 
-    since = utc_now() - timedelta(days=window_days)
+    since = utc_now_naive() - timedelta(days=window_days)
     order_ts = _order_timestamp_column()
 
-    # Base joins: Product <- OrderItem -> Order
     q = (
         db.session.query(  # type: ignore[attr-defined]
             Product.id.label("product_id"),
@@ -69,7 +79,7 @@ def get_ranking_inputs(window_days: int = 30, top_n: int = 10) -> Dict[str, Any]
         )
         .outerjoin(OrderItem, OrderItem.product_id == Product.id)
         .outerjoin(Order, Order.id == OrderItem.order_id)
-        .filter(cast(order_ts, DateTime(timezone=True)) >= since)
+        .filter(sa_cast(order_ts, DateTime(timezone=False)) >= since)
         .group_by(Product.id, Product.product_name)
         .order_by(func.count(func.distinct(Order.id)).desc())
         .limit(top_n)
@@ -77,7 +87,6 @@ def get_ranking_inputs(window_days: int = 30, top_n: int = 10) -> Dict[str, Any]
 
     rows = q.all()
 
-    # Ratings (optional)
     avg_map: Dict[str, float] = {}
     if Rating is not None and rows:
         pids = [pid for (pid, _, _) in rows]
@@ -114,7 +123,7 @@ def get_stock_alert_inputs(farmer_id: Optional[str], days: int = 7) -> List[Dict
     recent_orders = count DISTINCT orders containing that product (last N days)
     """
     days = max(int(days), 1)
-    since = utc_now() - timedelta(days=days)
+    since = utc_now_naive() - timedelta(days=days)
     order_ts = _order_timestamp_column()
 
     stmt = (
@@ -126,7 +135,7 @@ def get_stock_alert_inputs(farmer_id: Optional[str], days: int = 7) -> List[Dict
         .select_from(Product)
         .outerjoin(OrderItem, OrderItem.product_id == Product.id)
         .outerjoin(Order, Order.id == OrderItem.order_id)
-        .where(cast(order_ts, DateTime(timezone=True)) >= since)
+        .where(sa_cast(order_ts, DateTime(timezone=False)) >= since)
         .group_by(Product.id, Product.quantity)
     )
 

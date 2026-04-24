@@ -1,27 +1,25 @@
 // ============================================================================
-// src/components/FarmerSidebar.jsx — Navigation Sidebar (Farmer IA) [GREEN LIGHT]
+// src/components/FarmerSidebar.jsx — Navigation Sidebar (Farmer IA)
 // ----------------------------------------------------------------------------
 // FILE ROLE:
 //   Farmer navigation rail (mobile drawer + desktop collapse).
 //
-// RESPONSIBILITIES:
-//   • Provide farmer IA links:
-//       - Overview  -> /dashboard/farmer/overview
-//       - Products  -> /dashboard/farmer/products
-//       - Orders    -> /dashboard/farmer/orders
-//       - Feedback  -> /dashboard/farmer/feedback
-//   • Match AdminSidebar behavior (drawer + collapse)
-//   • Light green sidebar surface + white nav pills (reference UI)
+// THIS VERSION:
+//   ✅ Adds a dedicated Messages page for seller communication
+//   ✅ Keeps Feedback analytics separate from Messages
+//   ✅ Retains Settings as the farmer commerce control center
 // ============================================================================
 
 import React from "react";
 import { NavLink } from "react-router-dom";
 import {
-  Home,
   LayoutDashboard,
   Package,
   ClipboardList,
   MessageSquareText,
+  Bell,
+  BarChart3,
+  Settings,
   LogOut,
   Leaf,
   ChevronLeft,
@@ -54,42 +52,28 @@ function Item({ name, icon: Icon, path, end, collapsed, onClick }) {
   );
 }
 
-export default function FarmerSidebar({
-  drawerOpen,
-  onCloseDrawer,
-  collapsed,
-  onToggleCollapsed,
-  onLogout,
-}) {
+export default function FarmerSidebar({ drawerOpen, onCloseDrawer, collapsed, onToggleCollapsed, onLogout }) {
   const navItems = [
-    { name: "Home", icon: Home, path: "/", end: true },
     { name: "Overview", icon: LayoutDashboard, path: "/dashboard/farmer/overview" },
     { name: "Products", icon: Package, path: "/dashboard/farmer/products" },
     { name: "Orders", icon: ClipboardList, path: "/dashboard/farmer/orders" },
-    { name: "Feedback", icon: MessageSquareText, path: "/dashboard/farmer/feedback" },
+    { name: "Messages", icon: MessageSquareText, path: "/dashboard/farmer/messages" },
+    { name: "Announcements", icon: Bell, path: "/dashboard/farmer/announcements" },
+    { name: "Feedback", icon: BarChart3, path: "/dashboard/farmer/feedback" },
+    { name: "Quality Analytics", icon: BarChart3, path: "/dashboard/farmer/quality-analytics" },
+    { name: "Settings", icon: Settings, path: "/dashboard/farmer/settings" },
   ];
 
   const widthClass = collapsed ? "w-[84px]" : "w-[270px]";
   const close = () => (typeof onCloseDrawer === "function" ? onCloseDrawer() : undefined);
 
   const Shell = (
-    <div
-      className={[
-        "h-full text-slate-900",
-        "bg-[#F4FBF7]",
-        "border-r border-[#D8F3DC]",
-        widthClass,
-        "flex flex-col",
-      ].join(" ")}
-      aria-label="Farmer sidebar"
-    >
-      {/* Header / Brand */}
+    <div className={["h-full text-slate-900", "bg-[#F4FBF7]", "border-r border-[#D8F3DC]", widthClass, "flex flex-col"].join(" ")} aria-label="Farmer sidebar">
       <div className="px-4 py-4 flex items-center justify-between border-b border-[#D8F3DC]">
         <div className="flex items-center gap-3 min-w-0">
           <div className="h-10 w-10 rounded-2xl bg-white grid place-items-center border border-[#B7E4C7] shadow-sm">
             <Leaf className="h-5 w-5 text-[#2D6A4F]" />
           </div>
-
           {!collapsed && (
             <div className="min-w-0">
               <div className="font-extrabold tracking-tight truncate">AgroConnect</div>
@@ -98,17 +82,10 @@ export default function FarmerSidebar({
           )}
         </div>
 
-        {/* Mobile close */}
-        <button
-          type="button"
-          onClick={close}
-          className="lg:hidden h-9 w-9 rounded-xl border border-[#D8F3DC] bg-white hover:bg-slate-50 grid place-items-center"
-          aria-label="Close sidebar"
-        >
+        <button type="button" onClick={close} className="lg:hidden h-9 w-9 rounded-xl border border-[#D8F3DC] bg-white hover:bg-slate-50 grid place-items-center" aria-label="Close sidebar">
           <X className="h-4 w-4 text-slate-700" />
         </button>
 
-        {/* Collapse toggle (desktop) */}
         <button
           type="button"
           onClick={onToggleCollapsed}
@@ -120,14 +97,12 @@ export default function FarmerSidebar({
         </button>
       </div>
 
-      {/* Nav */}
       <nav className="mt-3 px-3 space-y-2 flex-1">
         {navItems.map((n) => (
           <Item key={n.path} {...n} collapsed={collapsed} onClick={close} />
         ))}
       </nav>
 
-      {/* Logout */}
       <div className="p-3 border-t border-[#D8F3DC]">
         <button
           type="button"
@@ -146,18 +121,10 @@ export default function FarmerSidebar({
 
   return (
     <>
-      {/* Desktop */}
       <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:block">{Shell}</aside>
-
-      {/* Mobile drawer */}
       {drawerOpen && (
         <div className="lg:hidden fixed inset-0 z-50">
-          <button
-            type="button"
-            aria-label="Close drawer"
-            onClick={close}
-            className="absolute inset-0 bg-black/40"
-          />
+          <button type="button" aria-label="Close drawer" onClick={close} className="absolute inset-0 bg-black/40" />
           <div className="absolute inset-y-0 left-0">{Shell}</div>
         </div>
       )}

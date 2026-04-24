@@ -1,51 +1,71 @@
 # ==============================================================================
-# .gitignore — AgroConnect Namibia (Monorepo)
-# ------------------------------------------------------------------------------
+# .gitignore — AgroConnect Namibia
+# ==============================================================================
 # FILE ROLE:
-#   Prevent sensitive data, local machine artifacts, dependencies, caches, and
-#   generated build outputs from being committed to Git.
-#
-# WHAT SHOULD BE COMMITTED:
-#   ✅ Source code, configuration templates (*.example), migrations, docs
-#   ✅ Small static assets required to run (e.g., default images), if desired
-#
-# WHAT SHOULD NEVER BE COMMITTED:
-#   ❌ Real secrets (.env), local databases, node_modules, virtualenvs, caches,
-#     build artifacts, logs, OS/IDE noise, runtime uploads
+#   Prevent sensitive data, generated files, caches, dependencies, runtime uploads,
+#   archive files, temporary notes, and machine-specific files from being committed.
 # ==============================================================================
 
 
 # ------------------------------------------------------------------------------
-# Environment variables / secrets (never commit real secrets)
+# Real environment files / secrets
 # ------------------------------------------------------------------------------
 .env
-backend/.env
-ai_service/.env
-
-# Common dotenv variants (keep templates via negation rules below)
 .env.*
+backend/.env
 backend/.env.*
+frontend/.env
+frontend/.env.*
+ai_service/.env
 ai_service/.env.*
 
-# Keep example templates (safe to commit)
+# Keep safe environment templates only
 !.env.example
-!backend/.env.example
-!ai_service/.env.example
-!*.env.example
-!*.env.sample
-!*.env.template
-!*.env.prod.example
-!*.env.production.example
+!.env.sample
+!.env.template
+!.env.prod.example
 
-# CRA / Vite local env files (frontend)
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+!backend/.env.example
+!backend/.env.sample
+!backend/.env.template
+!backend/.env.prod.example
+
+!frontend/.env.example
+!frontend/.env.sample
+!frontend/.env.template
+!frontend/.env.development.example
+!frontend/.env.production.example
+
+!ai_service/.env.example
+!ai_service/.env.sample
+!ai_service/.env.template
+!ai_service/.env.prod.example
 
 
 # ------------------------------------------------------------------------------
-# Node / Frontend dependencies + tooling logs
+# Uploaded/archive files
+# These are often temporary project exports and should not be committed.
+# ------------------------------------------------------------------------------
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+
+
+# ------------------------------------------------------------------------------
+# Temporary cleanup/review notes
+# These are useful during refactoring but should not be committed.
+# ------------------------------------------------------------------------------
+CLEANUP_NOTES_*.txt
+**/CLEANUP_NOTES_*.txt
+SOCKETIO_RUN_NOTE.txt
+**/README_overview_message_customer_shortcut.txt
+
+
+# ------------------------------------------------------------------------------
+# Node / frontend dependencies and logs
 # ------------------------------------------------------------------------------
 node_modules/
 frontend/node_modules/
@@ -58,38 +78,37 @@ pnpm-debug.log*
 
 
 # ------------------------------------------------------------------------------
-# Frontend build outputs
+# Frontend generated build outputs
+# These are created by npm run build and should not be committed.
 # ------------------------------------------------------------------------------
 frontend/build/
 frontend/dist/
-dist/
 build/
+dist/
 
 
 # ------------------------------------------------------------------------------
-# Backend runtime uploads (user-generated content)
-# ------------------------------------------------------------------------------
-# If you want to keep a controlled "defaults" directory tracked (recommended),
-# ignore everything under uploads EXCEPT defaults (and optional .gitkeep).
-backend/uploads/*
-!backend/uploads/defaults/
-!backend/uploads/defaults/**
-!backend/uploads/.gitkeep
-
-
-# ------------------------------------------------------------------------------
-# Python virtualenvs + caches + test artifacts
+# Python virtual environments
 # ------------------------------------------------------------------------------
 .venv/
 venv/
+env/
+
 backend/.venv/
 backend/venv/
+backend/env/
 
 ai_service/.venv/
 ai_service/venv/
+ai_service/env/
 
+
+# ------------------------------------------------------------------------------
+# Python caches, compiled files, and test/tooling caches
+# ------------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
+*.pyo
 
 .pytest_cache/
 .mypy_cache/
@@ -97,16 +116,43 @@ __pycache__/
 .pyright/
 pyright-report.json
 
-# Python packaging artifacts
 *.egg-info/
 .eggs/
 pip-wheel-metadata/
 
 
 # ------------------------------------------------------------------------------
-# Flask runtime folder
+# Flask / backend runtime folders
 # ------------------------------------------------------------------------------
 instance/
+backend/instance/
+
+
+# ------------------------------------------------------------------------------
+# Backend runtime uploads
+# Keep only controlled defaults and .gitkeep.
+# Runtime product images and payment proofs should not be committed.
+# ------------------------------------------------------------------------------
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/defaults/
+!backend/uploads/defaults/**
+
+
+# ------------------------------------------------------------------------------
+# Local database files and database dumps
+# Keep only intentional schema/seed files under database/ if needed.
+# ------------------------------------------------------------------------------
+*.sqlite
+*.sqlite3
+*.db
+
+agroconnect_db.sql
+backend/agroconnect_db.sql
+
+!database/schema.sql
+!database/seed_demo.sql
+!database/README.md
 
 
 # ------------------------------------------------------------------------------
@@ -114,6 +160,16 @@ instance/
 # ------------------------------------------------------------------------------
 *.log
 logs/
+backend/logs/
+frontend/logs/
+ai_service/logs/
+
+
+# ------------------------------------------------------------------------------
+# Docker/runtime noise
+# ------------------------------------------------------------------------------
+.docker/
+docker-data/
 
 
 # ------------------------------------------------------------------------------
@@ -121,12 +177,22 @@ logs/
 # ------------------------------------------------------------------------------
 .DS_Store
 Thumbs.db
+desktop.ini
 
 
 # ------------------------------------------------------------------------------
-# Editor / IDE (optional — remove these if you want to commit team settings)
+# Editor / IDE files
 # ------------------------------------------------------------------------------
 .vscode/
 .idea/
 *.swp
 *~
+
+
+# ------------------------------------------------------------------------------
+# Backups created during cleanup
+# ------------------------------------------------------------------------------
+_runtime_backup/
+*.bak
+*.backup
+*.old

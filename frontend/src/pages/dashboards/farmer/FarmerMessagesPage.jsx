@@ -1,28 +1,24 @@
+// ============================================================================
+// frontend/src/pages/dashboards/farmer/FarmerMessagesPage.jsx — Farmer Messages
+// ----------------------------------------------------------------------------
+// FILE ROLE:
+//   Farmer-facing conversation workspace for customer communication.
+// ============================================================================
+
 import React from "react";
-import { MessageSquareText } from "lucide-react";
 
-import Card, { CardContent, CardHeader, CardTitle } from "../../../components/ui/Card";
-import EmptyState from "../../../components/ui/EmptyState";
+import FarmerLayout from "../../../components/FarmerLayout";
+import MessagingWorkspace from "../../../components/messaging/MessagingWorkspace";
 
-/**
- * Placeholder page so FarmerLayout sidebar links don't 404.
- * Replace with a real messages/inbox view later.
- */
 export default function FarmerMessagesPage() {
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Messages</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <EmptyState
-            icon={MessageSquareText}
-            title="No messages view yet"
-            message="This page is wired up so navigation works. Add your inbox/chat UI here later."
-          />
-        </CardContent>
-      </Card>
-    </div>
+    <FarmerLayout>
+      <MessagingWorkspace
+        role="farmer"
+        eyebrow="Seller communication"
+        title="Messages"
+        description="Manage customer conversations, reply to buyer questions, and keep one clean message history per listing."
+      />
+    </FarmerLayout>
   );
 }

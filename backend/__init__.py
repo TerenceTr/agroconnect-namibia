@@ -1,22 +1,23 @@
-# ====================================================================
+# ============================================================================
 # backend/__init__.py — Package Entry Point
-# ====================================================================
+# ============================================================================
 # FILE ROLE:
 #   • Makes `backend` a proper Python package
-#   • Allows Flask CLI to locate the factory:
-#       python -m flask --app backend:create_app run
+#   • Exposes create_app for Flask CLI imports
 #
-# PYRIGHT NOTE:
-#   Some type-checkers expect `models` to be an exported package attribute
-#   if you write: `from backend import models`.
-#   We expose it explicitly for IDE friendliness.
-# ====================================================================
+# IMPORTANT:
+#   Avoid hard-importing optional models here.
+#   Flask CLI imports the package before backend.app submodule is loaded.
+# ============================================================================
 
 from __future__ import annotations
 
 from backend.app import create_app
 
-# Expose the models submodule as a package attribute (IDE/type-checker friendly)
-import backend.models as models  # noqa: F401
+# Optional: expose models for IDE convenience, but NEVER crash the package import.
+try:
+    import backend.models as models  # noqa: F401
+except Exception:  # pragma: no cover
+    models = None  # type: ignore
 
 __all__ = ["create_app", "models"]

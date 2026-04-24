@@ -4,11 +4,13 @@
 // FILE ROLE:
 //   Top products panel for FarmerDashboard.
 //
-// RESPONSIBILITIES:
-//   • Show a small ranked list (currently by stock quantity)
+// UX FIX (THIS UPDATE):
+//   • First-load-only loading:
+//       - show “Loading…” only before first resolved fetch
+//       - during refetch keep existing list visible (no flicker)
 // ============================================================================
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 // IMPORTANT: this file is inside .../farmer/dashboard/, so go up 4 levels to /src
 import Card, { CardHeader, CardTitle, CardContent } from "../../../../components/ui/Card";
@@ -16,20 +18,31 @@ import EmptyState from "../../../../components/ui/EmptyState";
 
 import { getProductId, getProductName, toNumber } from "./utils";
 
+function useFirstLoadOnly(loading) {
+  const [painted, setPainted] = useState(false);
+
+  useEffect(() => {
+    if (!painted && !loading) setPainted(true);
+  }, [loading, painted]);
+
+  return painted;
+}
+
 export default function TopProductsCard({ loading, products, lowStockThreshold = 5 }) {
+  const painted = useFirstLoadOnly(loading);
+  const showLoading = loading && !painted;
+
   return (
     <Card variant="surface">
       <CardHeader>
         <div>
           <CardTitle>Top Products</CardTitle>
-          <p className="text-xs text-slate-500 mt-1">
-            Based on stock quantity (change to “most ordered” later)
-          </p>
+          <p className="text-xs text-slate-500 mt-1">Based on stock quantity (change to “most ordered” later)</p>
         </div>
       </CardHeader>
 
       <CardContent>
-        {loading ? (
+        {showLoading ? (
           <p className="text-sm text-slate-500">Loading…</p>
         ) : products.length === 0 ? (
           <EmptyState message="No products yet. Add your first product." />
@@ -46,9 +59,7 @@ export default function TopProductsCard({ loading, products, lowStockThreshold =
                 >
                   <div className="min-w-0">
                     <div className="font-semibold text-slate-900 truncate">{getProductName(p)}</div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      Price: N$ {toNumber(p?.price ?? 0, 0).toFixed(2)}
-                    </div>
+                    <div className="text-xs text-slate-500 mt-1">Price: N$ {toNumber(p?.price ?? 0, 0).toFixed(2)}</div>
                   </div>
 
                   <span

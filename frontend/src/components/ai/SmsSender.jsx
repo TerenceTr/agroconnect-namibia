@@ -1,76 +1,108 @@
-// src/components/ai/SmsSender.jsx
+// ============================================================================
+// frontend/src/components/ai/SmsSender.jsx
+// ----------------------------------------------------------------------------
+// FILE ROLE:
+//   Optional “Market Alerts” tool.
+//   • Lets user send an SMS (or auto-generate message if backend supports it)
+//   • Uses AI SMS hook
+//
+// IMPORTANT:
+//   Some backends implement auto-generate through the same endpoint.
+//   We call sendSms with to=null only for suggestion IF user enabled autoGen.
+// ============================================================================
+
 import React, { useEffect, useState } from "react";
-import { Card, CardHeader, CardContent, CardTitle } from "../../components/ui/Card";
-import { Button } from "../../components/ui/Button";
 import { Loader2, Send } from "lucide-react";
 import { useAiSms } from "../../hooks/ai/useAiSms";
 
-/**
- * Props:
- * - productName (optional) -> used to auto-generate a market/SMS message context
- */
 export default function SmsSender({ productName = null }) {
   const [to, setTo] = useState("");
   const [msg, setMsg] = useState("");
-  const [autoGen, setAutoGen] = useState(!!productName);
+  const [autoGen, setAutoGen] = useState(Boolean(productName));
+
   const { sendSms, result, loading, error } = useAiSms();
 
-  // If a productName is provided and autoGen true, call backend to generate suggested message
+  // Auto-generate suggested message (if supported by backend)
   useEffect(() => {
-    let didCancel = false;
+    let cancelled = false;
 
-    const gen = async () => {
+    async function generate() {
       if (!autoGen || !productName) return;
+
       try {
-        // Call AI endpoint to generate short SMS preview
-        const r = await sendSms({ to: null, message: null, auto_generate: true, context: { product: productName } });
-        if (!didCancel && r && r.suggested_message) {
-          setMsg(r.suggested_message);
+        const r = await sendSms({
+          to: null,
+          message: null,
+          auto_generate: true,
+          context: { product: productName },
+        });
+
+        const suggested = r?.suggested_message || r?.message || "";
+        if (!cancelled && suggested && !msg) {
+          setMsg(String(suggested));
         }
-      } catch (err) {
-        // ignore — user can type a message
+      } catch {
+        // ignore — user can type manually
       }
-    };
+    }
 
-    gen();
-
+    generate();
     return () => {
-      didCancel = true;
+      cancelled = true;
     };
+    // We intentionally do NOT depend on msg to avoid re-trigger loops.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoGen, productName]);
+  }, [autoGen, productName, sendSms]);
 
-  const handleSend = async () => {
-    if (!to || (!msg && !autoGen)) return alert("Provide recipient and message (or enable auto-generation).");
+  async function handleSend() {
+    if (!to.trim()) {
+      alert("Provide recipient phone number (e.g. +264...)");
+      return;
+    }
+    if (!msg.trim() && !autoGen) {
+      alert("Provide a message, or enable auto-generation.");
+      return;
+    }
 
-    // sendSms will handle auto_generate flag too, but we pass the final message if exists
-    await sendSms({ to, message: msg || null, auto_generate: autoGen, context: { product: productName } });
-  };
+    await sendSms({
+      to: to.trim(),
+      message: msg.trim() || null,
+      auto_generate: autoGen,
+      context: { product: productName },
+    });
+  }
 
   return (
-    <Card className="rounded-2xl shadow-md">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Send className="h-5 w-5 text-primary" />
-          Send SMS
-        </CardTitle>
-      </CardHeader>
+    <div className="space-y-3">
+      <div className="text-sm font-extrabold text-slate-900 inline-flex items-center gap-2">
+        <Send className="h-4 w-4 text-emerald-700" />
+        Send SMS
+      </div>
 
-      <CardContent className="space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 space-y-3">
         <input
           type="text"
-          placeholder="Recipient phone number (e.g. +2648...)"
+          placeholder="Recipient phone number (e.g. +264...)"
           value={to}
           onChange={(e) => setTo(e.target.value)}
-          className="w-full rounded-xl border px-3 py-2"
+          className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none"
         />
 
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={autoGen} onChange={(e) => setAutoGen(e.target.checked)} />
+        <div className="flex items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={autoGen}
+              onChange={(e) => setAutoGen(e.target.checked)}
+            />
             Auto-generate message
           </label>
-          {productName && <div className="text-sm text-gray-500">Context: {productName}</div>}
+
+          {productName && (
+            <div className="text-xs text-slate-500 font-semibold">
+              Context: {productName}
+            </div>
+          )}
         </div>
 
         <textarea
@@ -78,13 +110,14 @@ export default function SmsSender({ productName = null }) {
           value={msg}
           onChange={(e) => setMsg(e.target.value)}
           rows={3}
-          className="w-full rounded-xl border px-3 py-2"
-        ></textarea>
+          className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none"
+        />
 
-        <Button
+        <button
+          type="button"
           onClick={handleSend}
           disabled={loading}
-          className="w-full flex items-center gap-2"
+          className="h-10 w-full rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-60"
         >
           {loading ? (
             <>
@@ -95,15 +128,15 @@ export default function SmsSender({ productName = null }) {
               <Send className="h-5 w-5" /> Send SMS
             </>
           )}
-        </Button>
+        </button>
 
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {error && <p className="text-rose-700 text-sm">{String(error)}</p>}
         {result && (
-          <p className="text-green-600 text-sm">
-            Message accepted → {result.to || "accepted"}
+          <p className="text-emerald-700 text-sm">
+            Message accepted → {result?.to || "accepted"}
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

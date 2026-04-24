@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from ai_service.redis_cache import AsyncJsonCache
+from ai_service.services.redis_cache import AsyncJsonCache
 from ai_service.services import recommender
 from ai_service.services.recommender import recommend_for_customer
 

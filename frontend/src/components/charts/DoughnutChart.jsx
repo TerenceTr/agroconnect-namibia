@@ -1,39 +1,23 @@
 // ============================================================================
-// BarChart.jsx — Reusable Bar Chart Wrapper
+// DoughnutChart.jsx — Reusable Doughnut Chart Wrapper (FIXED)
+// ----------------------------------------------------------------------------
+// FILE ROLE:
+//   Reusable Doughnut chart wrapper for react-chartjs-2.
+//   (Previously duplicated from BarChart.jsx, so it could not render correctly.)
 // ============================================================================
 
-import React from 'react';
+import React from "react";
 import {
   Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
+  ArcElement,
   Tooltip,
   Legend,
-} from 'chart.js';
-import { Bar } from 'react-chartjs-2';
+} from "chart.js";
+import { Doughnut } from "react-chartjs-2";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Tooltip,
-  Legend
-);
+ChartJS.register(ArcElement, Tooltip, Legend);
 
-export default function BarChart({ data, options, height = 300 }) {
+export default function DoughnutChart({ data, options }) {
   if (!data) return null;
-
-  return (
-    <div style={{ height }}>
-      <Bar
-        data={data}
-        options={{
-          responsive: true,
-          maintainAspectRatio: false,
-          ...options,
-        }}
-      />
-    </div>
-  );
+  return <Doughnut data={data} options={options} />;
 }

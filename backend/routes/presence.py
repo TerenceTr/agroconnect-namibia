@@ -2,14 +2,18 @@
 # backend/routes/presence.py — Presence Ping API (JWT-PROTECTED)
 # ====================================================================
 # FILE ROLE:
-#   • Lightweight endpoint to update "last seen" for logged-in users
-#   • Supports admin online/offline view (presence_store threshold logic)
+#   • Lightweight endpoint to update "last seen" for the authenticated user.
+#   • Powers admin online/offline view (in-memory store by default).
 #
-# ROUTES:
+# ROUTES (registered at url_prefix="/api/presence"):
 #   POST /api/presence/ping
 #
 # USED BY:
 #   DashboardLayout.jsx (periodic ping)
+#
+# NOTE:
+#   Presence is an OPTIONAL feature. If anything fails (Redis down, etc),
+#   we still return success so the app never breaks.
 # ====================================================================
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from flask.globals import request
 from flask.json import jsonify
 
 from backend.models.user import User
-from backend.utils.presence_store import mark_seen
+from backend.services.presence_store import touch
 from backend.utils.require_auth import require_access_token
 
 presence_bp = Blueprint("presence", __name__)
@@ -36,10 +40,9 @@ def _json_error(msg: str, status: int) -> Any:
 @presence_bp.post("/ping")
 @require_access_token
 def ping() -> Any:
-    """
-    Ping presence.
+    """Ping presence.
 
-    This is intentionally simple and tolerant:
+    Intentionally tolerant:
       • If presence storage fails, we still return success (optional feature).
     """
     user = getattr(request, "current_user", None)
@@ -47,7 +50,7 @@ def ping() -> Any:
         return _json_error("Unauthorized", 401)
 
     try:
-        mark_seen(user.id)
+        touch(str(user.id))
     except Exception:
         # Presence is optional — never break the UI/auth flow
         pass

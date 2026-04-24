@@ -1,30 +1,50 @@
-# ---------------------------------------------------------------------
-# ai_service/.dockerignore
+# ==============================================================================
+# ai_service/.dockerignore — Build Context Hygiene
+# ------------------------------------------------------------------------------
 # FILE ROLE:
-#   Reduces Docker build context size and prevents secrets from being copied.
-# ---------------------------------------------------------------------
+#   Shrinks Docker build context and prevents secrets/local artifacts from being
+#   copied into images.
+# ==============================================================================
 
+# Python caches
 __pycache__/
 *.py[cod]
 
+# Virtual environments
 env/
 venv/
 .venv/
+
+# Build artifacts
 dist/
 build/
+*.egg-info/
 
+# Logs / runtime artifacts
 *.log
-.pnpm-debug.log
+*.sqlite
+*.db
 
-# Secrets
+# Coverage / test artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+coverage.xml
+
+# Node/pnpm noise (just in case)
+.pnpm-debug.log
+.pnpm-store/
+
+# Secrets (never bake into images)
 .env
 .env.*
 *.pem
 *.key
 
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
+# VCS / OS
 .git/
 .DS_Store
+Thumbs.db

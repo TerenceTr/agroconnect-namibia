@@ -1,21 +1,17 @@
 // ============================================================================
-// 🧭 AdminSidebar.jsx — Admin Navigation (AgroConnect Namibia) [GREEN LIGHT]
+// frontend/src/components/AdminSidebar.jsx
 // ----------------------------------------------------------------------------
 // FILE ROLE:
 //   Left navigation rail for all Admin pages.
-//   • Desktop fixed sidebar + mobile drawer
-//   • Active route highlighting
-//   • Collapsible (icon-only) mode
-//   • Includes Messaging section
-//   • Polished Logout button
 //
-// DESIGN (Reference UI):
-//   ✅ Light green sidebar surface (not dark)
-//   ✅ White rounded nav pills
-//   ✅ Active pill = soft green + green text
+// THIS UPDATE:
+//   ✅ Keeps fixed sidebar, collapse behavior, and presence widget
+//   ✅ Adds a compact Reports quick-actions card
+//   ✅ Gives the admin a clearer entry point to the new report workflow
+//   ✅ Preserves current navigation layout and mobile drawer behavior
 // ============================================================================
 
-import React from "react";
+import React, { useCallback, useMemo } from "react";
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -26,12 +22,13 @@ import {
   FileText,
   Settings,
   MessageSquare,
-  LogOut,
   ChevronLeft,
   ChevronRight,
   Leaf,
   X,
 } from "lucide-react";
+
+import AdminSidebarReportQuickActions from "./admin/AdminSidebarReportQuickActions";
 
 const nav = [
   { to: "/dashboard/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -44,7 +41,21 @@ const nav = [
   { to: "/dashboard/admin/settings", label: "Settings", icon: Settings },
 ];
 
-function Item({ to, label, Icon, collapsed, onClick }) {
+// ---------------------------------------------------------------------------
+// Small defensive helpers
+// ---------------------------------------------------------------------------
+function safeArr(v) {
+  return Array.isArray(v) ? v : [];
+}
+
+function safeObj(v) {
+  return v && typeof v === "object" ? v : null;
+}
+
+// ---------------------------------------------------------------------------
+// Nav item
+// ---------------------------------------------------------------------------
+function Item({ to, label, icon: Icon, collapsed, onClick }) {
   return (
     <NavLink
       to={to}
@@ -59,14 +70,86 @@ function Item({ to, label, Icon, collapsed, onClick }) {
         ].join(" ")
       }
       title={collapsed ? label : undefined}
+      aria-label={label}
     >
-      <div className="h-9 w-9 rounded-2xl bg-white border border-[#D8F3DC] grid place-items-center">
-        {/* Icon color shifts slightly when active (via parent text color) */}
+      <div className="grid h-9 w-9 place-items-center rounded-2xl border border-[#D8F3DC] bg-white">
         <Icon className="h-5 w-5 text-current opacity-90 group-hover:opacity-100" />
       </div>
 
-      {!collapsed && <span className="text-sm font-semibold">{label}</span>}
+      {!collapsed && <span className="truncate text-sm font-semibold">{label}</span>}
     </NavLink>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Presence widget
+// ---------------------------------------------------------------------------
+function PresencePanel({ presenceAdmins, collapsed }) {
+  if (collapsed) return null;
+
+  const p = safeObj(presenceAdmins);
+  if (!p) return null;
+
+  const windowMinutes = p?.window_minutes ?? 10;
+  const online = safeArr(p?.online);
+  const recent = safeArr(p?.recent);
+
+  const renderName = (u) => u?.full_name || u?.name || u?.email || "Admin";
+
+  return (
+    <div className="mt-3 rounded-2xl border border-[#D8F3DC] bg-white/85 p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-extrabold text-slate-900">Admin Presence</div>
+          <div className="text-xs text-slate-500">Online window: {windowMinutes} min</div>
+        </div>
+
+        <span className="inline-flex items-center gap-1 text-xs text-slate-600">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          Live
+        </span>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        <div>
+          <div className="text-xs font-semibold text-slate-700">Online now</div>
+          {online.length === 0 ? (
+            <div className="mt-1 text-xs text-slate-500">No admins online.</div>
+          ) : (
+            <ul className="mt-1 space-y-1">
+              {online.slice(0, 3).map((u) => (
+                <li
+                  key={u?.id || u?.email || renderName(u)}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span className="truncate text-xs text-slate-700">{renderName(u)}</span>
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div>
+          <div className="text-xs font-semibold text-slate-700">Recently seen</div>
+          {recent.length === 0 ? (
+            <div className="mt-1 text-xs text-slate-500">No recent activity.</div>
+          ) : (
+            <ul className="mt-1 space-y-1">
+              {recent.slice(0, 3).map((u) => (
+                <li
+                  key={u?.id || u?.email || renderName(u)}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span className="truncate text-xs text-slate-700">{renderName(u)}</span>
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-slate-300" />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -75,109 +158,100 @@ export default function AdminSidebar({
   onCloseDrawer,
   collapsed,
   onToggleCollapsed,
-  onLogout,
+  onLogout, // kept for compatibility with AdminLayout
+  presenceAdmins,
 }) {
   const widthClass = collapsed ? "w-[84px]" : "w-[270px]";
-  const close = () => (typeof onCloseDrawer === "function" ? onCloseDrawer() : undefined);
 
-  const Shell = (
-    <div
-      className={[
-        "h-full text-slate-900",
-        "bg-[#F4FBF7]",
-        "border-r border-[#D8F3DC]",
-        widthClass,
-        "flex flex-col",
-      ].join(" ")}
-      aria-label="Admin sidebar"
-    >
-      {/* Brand */}
-      <div className="px-4 py-4 flex items-center justify-between border-b border-[#D8F3DC]">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="h-10 w-10 rounded-2xl bg-white grid place-items-center border border-[#B7E4C7] shadow-sm">
-            <Leaf className="h-5 w-5 text-[#2D6A4F]" />
+  const close = useCallback(() => {
+    if (typeof onCloseDrawer === "function") onCloseDrawer();
+  }, [onCloseDrawer]);
+
+  const shell = useMemo(
+    () => (
+      <div
+        className={[
+          "flex h-screen flex-col",
+          "bg-[#F4FBF7] text-slate-900",
+          "border-r border-[#D8F3DC]",
+          widthClass,
+        ].join(" ")}
+        aria-label="Admin sidebar"
+      >
+        {/* Brand row */}
+        <div className="flex items-center justify-between border-b border-[#D8F3DC] px-4 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-2xl border border-[#B7E4C7] bg-white shadow-sm">
+              <Leaf className="h-5 w-5 text-[#2D6A4F]" />
+            </div>
+
+            {!collapsed && (
+              <div className="min-w-0">
+                <div className="truncate font-extrabold tracking-tight">AgroConnect</div>
+                <div className="truncate text-xs text-slate-500">Admin Console</div>
+              </div>
+            )}
           </div>
 
-          {!collapsed && (
-            <div className="min-w-0">
-              <div className="font-extrabold tracking-tight truncate">AgroConnect</div>
-              <div className="text-xs text-slate-500 truncate">Admin Console</div>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={close}
+            className="grid h-9 w-9 place-items-center rounded-xl border border-[#D8F3DC] bg-white hover:bg-slate-50 lg:hidden"
+            aria-label="Close sidebar"
+            title="Close"
+          >
+            <X className="h-4 w-4 text-slate-700" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="hidden h-9 w-9 items-center justify-center rounded-xl border border-[#D8F3DC] bg-white transition hover:bg-slate-50 lg:inline-flex"
+            aria-label="Toggle sidebar"
+            title={collapsed ? "Expand" : "Collapse"}
+          >
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </button>
         </div>
 
-        {/* Mobile close */}
-        <button
-          type="button"
-          onClick={close}
-          className="lg:hidden h-9 w-9 rounded-xl border border-[#D8F3DC] bg-white hover:bg-slate-50 grid place-items-center"
-          aria-label="Close sidebar"
-        >
-          <X className="h-4 w-4 text-slate-700" />
-        </button>
-
-        {/* Collapse toggle (desktop only) */}
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          className="hidden lg:inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#D8F3DC] bg-white hover:bg-slate-50 transition"
-          aria-label="Toggle sidebar"
-          title={collapsed ? "Expand" : "Collapse"}
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </button>
-      </div>
-
-      {/* Nav */}
-      <div className="px-3 py-3 space-y-2 flex-1">
-        {nav.map((n) => (
-          <Item
-            key={n.to}
-            to={n.to}
-            label={n.label}
-            Icon={n.icon}
-            collapsed={collapsed}
-            onClick={close}
-          />
-        ))}
-      </div>
-
-      {/* Logout */}
-      <div className="p-3 border-t border-[#D8F3DC]">
-        <button
-          type="button"
-          onClick={onLogout}
-          className={[
-            "w-full flex items-center gap-3 rounded-2xl px-3 py-2.5",
-            "bg-white/85 border border-white/40 shadow-sm",
-            "text-slate-700 hover:text-slate-900 hover:bg-white transition",
-          ].join(" ")}
-          title={collapsed ? "Logout" : undefined}
-        >
-          <div className="h-9 w-9 rounded-2xl bg-white border border-[#D8F3DC] grid place-items-center">
-            <LogOut className="h-5 w-5" />
+        {/* Nav + quick actions */}
+        <div className="flex-1 overflow-y-auto px-3 py-3">
+          <div className="space-y-2">
+            {nav.map((n) => (
+              <Item key={n.to} {...n} collapsed={collapsed} onClick={close} />
+            ))}
           </div>
-          {!collapsed && <span className="text-sm font-semibold">Logout</span>}
-        </button>
+
+          {/* Report shortcuts */}
+          <AdminSidebarReportQuickActions collapsed={collapsed} />
+        </div>
+
+        {/* Presence */}
+        <div className="px-3 pb-4">
+          <PresencePanel presenceAdmins={presenceAdmins} collapsed={collapsed} />
+        </div>
       </div>
-    </div>
+    ),
+    [collapsed, onToggleCollapsed, close, presenceAdmins, widthClass]
   );
 
   return (
     <>
-      {/* Desktop */}
-      <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:block">{Shell}</aside>
+      <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:block">{shell}</aside>
 
-      {/* Mobile overlay + drawer */}
       {drawerOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
+        <div className="fixed inset-0 z-50 lg:hidden">
           <button
             type="button"
             aria-label="Close drawer"
             onClick={close}
             className="absolute inset-0 bg-black/40"
           />
-          <div className="absolute inset-y-0 left-0">{Shell}</div>
+          <div className="absolute inset-y-0 left-0">{shell}</div>
         </div>
       )}
     </>

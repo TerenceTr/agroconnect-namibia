@@ -59,8 +59,8 @@ export default function FarmerLayout({ children }) {
   );
 
   const handleLogout = () => {
-    logout();
-    navigate("/login", { replace: true });
+    void logout();
+    navigate("/", { replace: true, state: { authMode: "login", fromLogout: true } });
   };
 
   const leftPad = collapsed ? "lg:pl-[84px]" : "lg:pl-[270px]";

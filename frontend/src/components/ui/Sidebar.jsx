@@ -1,9 +1,19 @@
 // ====================================================================
-// 🧭 frontend\src\components\ui\Sidebar.jsx — Hybrid Sidebar
+// 🧭 frontend/src/components/ui/Sidebar.jsx — Hybrid Sidebar
 // --------------------------------------------------------------------
-// UPDATED:
-//   • Added AI Insights link (Admin + Farmer only)
-//   • Uses LineChart icon from lucide-react
+// FILE ROLE:
+//   Shared hybrid sidebar for desktop + mobile navigation.
+//
+// KEY RESPONSIBILITIES:
+//   • Role-aware navigation for admin, farmer, and customer
+//   • Expand/collapse behavior on desktop
+//   • Mobile drawer navigation
+//   • Logout access
+//
+// THIS UPDATE:
+//   ✅ Keeps AI Insights for Admin + Farmer only
+//   ✅ Renames customer "Account" to "My Account"
+//   ✅ Leaves customer AI access disabled
 // ====================================================================
 
 import React, { useState, useEffect } from "react";
@@ -39,11 +49,14 @@ export default function Sidebar({
   // ---------------------------------------------
   // NORMALIZED ROLE
   // ---------------------------------------------
+  // Use role_name when available because it is the clearest backend-provided
+  // role source for UI navigation decisions.
   const role = (user?.role_name || "").toLowerCase();
 
   // ---------------------------------------------
   // COMMON NAV
   // ---------------------------------------------
+  // Shared public/home entry.
   const common = [{ label: "Home", to: "/", icon: <Home /> }];
 
   // ---------------------------------------------
@@ -54,7 +67,7 @@ export default function Sidebar({
     { label: "Users", to: "/dashboard/admin/users", icon: <Users /> },
     { label: "Reports", to: "/dashboard/admin/reports", icon: <ShoppingBag /> },
     { label: "Settings", to: "/dashboard/admin/settings", icon: <Settings /> },
-    // ⭐ NEW — AI Insights
+    // Admin can access AI insights.
     { label: "AI Insights", to: "/dashboard/ai", icon: <LineChart /> },
   ];
 
@@ -64,7 +77,7 @@ export default function Sidebar({
   const farmer = [
     { label: "Dashboard", to: "/dashboard/farmer", icon: <Truck /> },
     { label: "Products", to: "/dashboard/farmer/products", icon: <ShoppingBag /> },
-    // ⭐ NEW — AI Insights
+    // Farmer can access AI insights.
     { label: "AI Insights", to: "/dashboard/ai", icon: <LineChart /> },
   ];
 
@@ -73,8 +86,8 @@ export default function Sidebar({
   // ---------------------------------------------
   const customer = [
     { label: "Market", to: "/dashboard/customer", icon: <ShoppingBag /> },
-    { label: "Account", to: "/dashboard/customer/account", icon: <Users /> },
-    // ❌ Customers do NOT see AI dashboard
+    { label: "My Account", to: "/dashboard/customer/account", icon: <Users /> },
+    // Customers do NOT see AI dashboard.
   ];
 
   // ---------------------------------------------
@@ -88,7 +101,7 @@ export default function Sidebar({
   ];
 
   // ---------------------------------------------
-  // Desktop sidebar glass style
+  // DESKTOP SIDEBAR STYLE
   // ---------------------------------------------
   const desktopClass = `
     hidden md:flex flex-col fixed left-0 top-0 h-full z-40

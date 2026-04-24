@@ -1,20 +1,62 @@
 /* =====================================================================
-   AgroConnect Namibia — Global Styles (Thesis-Level UI System)
+   frontend/src/index.css (or src/styles/globals.css) — AgroConnect Namibia
    ---------------------------------------------------------------------
    FILE ROLE:
-     Global styling used by ALL pages (auth + dashboards + admin + AI views).
+     Global styling foundation used by ALL pages (auth + dashboards + admin
+     + farmer + customer + AI insights). This is your “thesis UI system” layer.
 
-   GOALS:
-     • Calm green-tinted dashboard base (like the reference UI)
-     • Avoid “too much green” by keeping content on white cards
-     • Provide consistent buttons/inputs/selects
-     • Fix dropdown options visibility (white-on-white issue)
-     • Improve interactive affordances (cursor/hover/active)
+   DESIGN GOALS:
+     • Calm, green-tinted app background — NOT “green everywhere”
+     • Content sits on clean white cards with subtle borders/shadows
+     • Consistent buttons, inputs, selects, badges, chips
+     • Fix dropdown options visibility
+     • Improve interactive affordances + accessible focus rings
+     • Add a refined glass segmented role selector for registration
    ===================================================================== */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* =====================================================================
+   🎨 THEME TOKENS (CSS VARIABLES)
+   ===================================================================== */
+:root {
+  /* Base */
+  --ac-bg: #f4fbf7;
+  --ac-surface: #ffffff;
+  --ac-text: #111827;
+  --ac-muted: #6b7280;
+  --ac-border: #e6e8ef;
+
+  /* Primary brand */
+  --ac-primary: #1f7a4d;
+  --ac-primary-2: #2d6a4f;
+  --ac-primary-soft: rgba(31, 122, 77, 0.12);
+  --ac-ring: rgba(82, 183, 136, 0.22);
+
+  /* Status colors */
+  --ac-amber-bg: #fffbeb;
+  --ac-amber-border: #fde68a;
+  --ac-amber-text: #92400e;
+
+  --ac-rose-bg: #fff1f2;
+  --ac-rose-border: #fecdd3;
+  --ac-rose-text: #9f1239;
+
+  --ac-emerald-bg: #ecfdf5;
+  --ac-emerald-border: #a7f3d0;
+  --ac-emerald-text: #065f46;
+
+  /* Radii */
+  --ac-radius-xl: 16px;
+  --ac-radius-2xl: 20px;
+
+  /* Shadows */
+  --ac-shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06);
+  --ac-shadow-md: 0 8px 24px rgba(17, 24, 39, 0.08);
+  --ac-shadow-lg: 0 16px 44px rgba(17, 24, 39, 0.10);
+}
 
 /* =====================================================================
    🌍 GLOBAL BASE & TYPOGRAPHY
@@ -24,19 +66,24 @@ body {
   @apply antialiased;
   margin: 0;
   padding: 0;
-
-  /* ✅ Reference-like calm background */
-  background: #f4fbf7;
+  background: var(--ac-bg);
   background-attachment: fixed;
-
   font-family: "Inter", "Poppins", "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  color: #111827; /* slate-ish */
+  color: var(--ac-text);
 }
 
-/* Auth pages can opt-in to a richer gradient background */
+/* Reduce tap highlight noise on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* =====================================================================
+   🔒 AUTH BACKGROUND
+   ---------------------------------------------------------------------
+   Use on auth pages only
+   ===================================================================== */
 .ac-auth-gradient {
   background: linear-gradient(135deg, #10b981 0%, #0d7a57 30%, #065f46 60%, #054435 100%);
   background-attachment: fixed;
@@ -61,128 +108,452 @@ a,
 }
 
 /* =====================================================================
-   🧾 INPUT + SELECT SYSTEM (fix dropdown visibility)
+   🧾 INPUT + SELECT SYSTEM
+   ---------------------------------------------------------------------
+   Use:
+     className="ac-input"
+     className="ac-select"
    ===================================================================== */
-.ac-input {
-  @apply w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-900 outline-none transition;
-}
-.ac-input:focus {
-  border-color: #52b788;
-  box-shadow: 0 0 0 3px rgba(82, 183, 136, 0.18);
-}
-
-.ac-select {
-  @apply w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-900 outline-none transition;
-}
-.ac-select:focus {
-  border-color: #52b788;
-  box-shadow: 0 0 0 3px rgba(82, 183, 136, 0.18);
+.ac-input,
+.ac-select,
+textarea.ac-input {
+  @apply w-full outline-none transition;
+  border-radius: var(--ac-radius-xl);
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: #ffffff;
+  color: var(--ac-text);
+  padding: 10px 12px;
+  box-shadow: var(--ac-shadow-sm);
 }
 
-/* ✅ CRITICAL FIX:
-   Some browsers render <option> with white background.
-   If a <select> accidentally has text-white, options become white-on-white. */
+.ac-input::placeholder,
+textarea.ac-input::placeholder {
+  color: rgba(107, 114, 128, 0.85);
+}
+
+.ac-input:focus,
+.ac-select:focus,
+textarea.ac-input:focus {
+  border-color: rgba(31, 122, 77, 0.45);
+  box-shadow: 0 0 0 4px var(--ac-ring);
+}
+
+.ac-input:disabled,
+.ac-select:disabled,
+textarea.ac-input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  background: #f9fafb;
+}
+
+/* Fix invisible options in some browser/select combinations */
 select option {
   background: #ffffff;
-  color: #111827;
+  color: var(--ac-text);
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+select {
+  min-height: 44px;
 }
 
 /* =====================================================================
-   ⭐ BUTTON SYSTEM (works across your existing classnames)
+   ⭐ BUTTON SYSTEM
    ===================================================================== */
 .btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition;
+  @apply inline-flex items-center justify-center gap-2 font-semibold transition;
+  border-radius: var(--ac-radius-xl);
   padding: 10px 16px;
-  background: #40916c; /* reference green */
-  color: white;
-  border: 1px solid rgba(45, 106, 79, 0.25);
-  box-shadow: 0 8px 22px rgba(6, 95, 70, 0.18);
+  background: var(--ac-primary);
+  color: #ffffff;
+  border: 1px solid rgba(31, 122, 77, 0.28);
+  box-shadow: 0 10px 26px rgba(6, 95, 70, 0.16);
 }
+
 .btn-primary:hover {
-  background: #2d6a4f;
+  background: var(--ac-primary-2);
 }
+
 .btn-primary:active {
   transform: translateY(1px);
 }
+
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition;
+  @apply inline-flex items-center justify-center gap-2 font-semibold transition;
+  border-radius: var(--ac-radius-xl);
   padding: 10px 16px;
   background: #ffffff;
-  color: #111827;
+  color: var(--ac-text);
   border: 1px solid rgba(17, 24, 39, 0.12);
+  box-shadow: var(--ac-shadow-sm);
 }
+
 .btn-secondary:hover {
   background: #f9fafb;
 }
+
 .btn-secondary:active {
   transform: translateY(1px);
 }
 
-/* Keep your older class alive too (compat) */
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Legacy primary button kept for compatibility */
 .ac-btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-full font-semibold transition;
+  @apply inline-flex items-center justify-center gap-2 font-semibold transition;
+  border-radius: 9999px;
   padding: 12px 36px;
   font-size: 1.05rem;
   color: white;
-  background-color: rgba(16, 185, 129, 0.28);
-  border: 2px solid rgba(16, 185, 129, 0.65);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  background-color: rgba(16, 185, 129, 0.26);
+  border: 2px solid rgba(16, 185, 129, 0.60);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14);
 }
+
 .ac-btn-primary:hover {
   background-color: #c1a362;
   border-color: #c1a362;
   color: #1f1f1f;
-  box-shadow: 0 0 26px rgba(193, 163, 98, 0.35);
+  box-shadow: 0 0 26px rgba(193, 163, 98, 0.30);
 }
+
 .ac-btn-primary:active {
   transform: translateY(1px);
 }
+
 .ac-btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 /* =====================================================================
-   🧊 GLASSMORPHISM (kept for auth/marketing sections)
+   🧱 CARDS / SURFACES
+   ===================================================================== */
+.ac-card {
+  background: var(--ac-surface);
+  border: 1px solid var(--ac-border);
+  border-radius: var(--ac-radius-2xl);
+  box-shadow: var(--ac-shadow-sm);
+}
+
+.ac-card:hover {
+  box-shadow: var(--ac-shadow-md);
+}
+
+/* =====================================================================
+   🏷️ BADGES / CHIPS
+   ===================================================================== */
+.ac-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--ac-border);
+  background: #f7f8fa;
+  color: rgba(17, 24, 39, 0.78);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.ac-badge-success {
+  background: var(--ac-emerald-bg);
+  border: 1px solid var(--ac-emerald-border);
+  color: var(--ac-emerald-text);
+}
+
+.ac-badge-warning {
+  background: var(--ac-amber-bg);
+  border: 1px solid var(--ac-amber-border);
+  color: var(--ac-amber-text);
+}
+
+.ac-badge-danger {
+  background: var(--ac-rose-bg);
+  border: 1px solid var(--ac-rose-border);
+  color: var(--ac-rose-text);
+}
+
+/* =====================================================================
+   🧊 GLASSMORPHISM
+   ---------------------------------------------------------------------
+   Used mainly for auth / marketing surfaces
    ===================================================================== */
 .glass-card {
-  @apply rounded-2xl border border-white/20 shadow-xl;
+  border-radius: var(--ac-radius-2xl);
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  box-shadow: var(--ac-shadow-lg);
   background: rgba(255, 255, 255, 0.14);
   backdrop-filter: blur(14px) saturate(135%);
 }
+
 .glass-strong {
-  @apply border border-white/10;
+  border-radius: var(--ac-radius-2xl);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   background: rgba(255, 255, 255, 0.22);
   backdrop-filter: blur(18px) saturate(140%);
 }
 
 /* =====================================================================
-   ⚡ MOTION (SAFE)
+   👤 AUTH ROLE TOGGLE — GOLD GLASS SEGMENTED SELECTOR
+   ---------------------------------------------------------------------
+   Used on:
+     • frontend/src/pages/Register.js
+
+   DESIGN NOTES:
+     • Replaces plain radio buttons with a premium segmented control
+     • Keeps native radio inputs for accessibility and form support
+     • Uses gold highlight instead of green for the selected role
+     • Secondary helper text has been removed from the button content
+   ===================================================================== */
+.ac-role-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  width: min(100%, 360px);
+  padding: 6px;
+  border-radius: 22px;
+  overflow: hidden;
+
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.05)),
+    rgba(8, 28, 21, 0.22);
+  border: 1px solid rgba(218, 215, 205, 0.20);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.12),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.16),
+    0 12px 30px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(16px) saturate(135%);
+}
+
+/* Keep radios accessible but visually hidden */
+.ac-role-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Each option acts like a clean segmented button */
+.ac-role-toggle__option {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 12px 16px;
+  border-radius: 18px;
+  color: rgba(255, 255, 255, 0.82);
+  transition:
+    color 0.25s ease,
+    transform 0.2s ease;
+}
+
+.ac-role-toggle__option:hover {
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.ac-role-toggle__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ac-role-toggle__text {
+  display: flex;
+  align-items: center;
+}
+
+.ac-role-toggle__title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* Moving highlight / active panel */
+.ac-role-toggle__glider {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 6px;
+  width: calc(50% - 6px);
+  border-radius: 18px;
+  z-index: 1;
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.3s ease,
+    background 0.3s ease;
+  background:
+    linear-gradient(135deg, rgba(193, 163, 98, 0.52), rgba(162, 124, 59, 0.92)),
+    rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 10px 24px rgba(94, 63, 12, 0.24),
+    inset 0 1px 0 rgba(255, 244, 214, 0.22);
+}
+
+/* Keyboard accessibility */
+.ac-role-toggle input:focus-visible + .ac-role-toggle__option {
+  outline: 2px solid rgba(250, 204, 21, 0.95);
+  outline-offset: -2px;
+}
+
+/* Farmer selected state */
+#register-role-farmer:checked + .ac-role-toggle__option {
+  color: #ffffff;
+}
+
+#register-role-farmer:checked + .ac-role-toggle__option .ac-role-toggle__icon {
+  background: rgba(255, 244, 214, 0.18);
+  border-color: rgba(255, 226, 168, 0.28);
+}
+
+#register-role-farmer:checked ~ .ac-role-toggle__glider {
+  transform: translateX(0%);
+  background:
+    linear-gradient(135deg, rgba(214, 186, 120, 0.58), rgba(174, 132, 58, 0.94)),
+    rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 12px 26px rgba(102, 70, 19, 0.30),
+    inset 0 1px 0 rgba(255, 245, 220, 0.24);
+}
+
+/* Customer selected state */
+#register-role-customer:checked + .ac-role-toggle__option {
+  color: #ffffff;
+}
+
+#register-role-customer:checked + .ac-role-toggle__option .ac-role-toggle__icon {
+  background: rgba(255, 244, 214, 0.18);
+  border-color: rgba(255, 226, 168, 0.28);
+}
+
+#register-role-customer:checked ~ .ac-role-toggle__glider {
+  transform: translateX(100%);
+  background:
+    linear-gradient(135deg, rgba(214, 186, 120, 0.58), rgba(174, 132, 58, 0.94)),
+    rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 12px 26px rgba(102, 70, 19, 0.30),
+    inset 0 1px 0 rgba(255, 245, 220, 0.24);
+}
+
+/* Responsive refinement for small screens */
+@media (max-width: 520px) {
+  .ac-role-toggle {
+    width: 100%;
+  }
+
+  .ac-role-toggle__option {
+    min-height: 54px;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .ac-role-toggle__icon {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  .ac-role-toggle__title {
+    font-size: 0.88rem;
+  }
+}
+
+/* =====================================================================
+   🧭 SCROLLBARS
+   ===================================================================== */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(17, 24, 39, 0.12);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(17, 24, 39, 0.18);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* =====================================================================
+   ⚡ MOTION
    ===================================================================== */
 .fade-in {
   animation: fadeIn 0.6s ease-out both;
 }
+
 .slide-up {
   animation: slideUp 0.6s ease-out both;
 }
+
 .fade-out {
   animation: fadeOut 0.5s ease-out forwards;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
+
 @keyframes slideUp {
-  from { transform: translateY(18px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(18px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
+
 @keyframes fadeOut {
-  from { opacity: 1; }
-  to   { opacity: 0; visibility: hidden; }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* =====================================================================
+   🧩 SMALL QUALITY-OF-LIFE DEFAULTS
+   ===================================================================== */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+::selection {
+  background: rgba(31, 122, 77, 0.22);
 }

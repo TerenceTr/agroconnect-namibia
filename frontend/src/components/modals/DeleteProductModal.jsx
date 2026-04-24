@@ -63,8 +63,9 @@ export default function DeleteProductModal({ open, onClose, product, onDeleted }
       onDeleted?.(productId);
       onClose?.();
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error("Delete product error:", err);
-      toast.error("Failed to delete product");
+      toast.error(err?.response?.data?.message || "Failed to delete product");
     } finally {
       setLoading(false);
     }

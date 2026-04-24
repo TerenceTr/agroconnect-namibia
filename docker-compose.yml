@@ -1,9 +1,23 @@
 version: "3.9"
 
-# ====================================================================
-# AgroConnect Namibia — Full Stack
-# File: docker-compose.yml
-# ====================================================================
+# ==============================================================================
+# docker-compose.yml — AgroConnect Namibia (Full Stack)
+# ------------------------------------------------------------------------------
+# FILE ROLE:
+#   Orchestrates the full local/VM stack:
+#     • backend (Flask + Gunicorn + Socket.IO)
+#     • ai_service (FastAPI)
+#     • postgres (database)
+#     • redis (cache / realtime / queues)
+#     • minio (S3-compatible object storage)
+#
+# DESIGN NOTES:
+#   • Uses env_file for secrets (keep .env files out of Git).
+#   • Healthchecks + depends_on conditions reduce "service not ready" errors.
+#   • ai_service build target supports strict hygiene:
+#       - prod target installs ONLY requirements.txt
+#       - dev target installs requirements-dev.txt (optional)
+# ==============================================================================
 
 services:
   # ------------------------------------------------
@@ -16,6 +30,7 @@ services:
     container_name: agro_backend
     restart: unless-stopped
 
+    # Local secrets file (DO NOT COMMIT)
     env_file:
       - backend/.env
 
@@ -23,40 +38,66 @@ services:
       FLASK_ENV: production
       PYTHONPATH: /app
 
+    # Wait for core dependencies to be ready
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       minio:
         condition: service_started
 
     ports:
       - "5000:5000"
 
+    # Local uploads persistence (optional if you use S3/MinIO fully)
     volumes:
       - backend_uploads:/app/uploads
 
+    # Production server entrypoint
     command: gunicorn -c gunicorn_config.py backend.wsgi:app
+
 
   # ------------------------------------------------
   # AI Service (FastAPI)
   # ------------------------------------------------
   ai_service:
     build:
-      context: ./ai-service
+      # IMPORTANT: Your repo folder is ai_service (underscore), not ai-service
+      context: ./ai_service
+      dockerfile: Dockerfile
+
+      # Strict hygiene support:
+      #   prod (default) -> installs only requirements.txt
+      #   dev            -> installs requirements-dev.txt
+      #
+      # To build dev target:
+      #   PowerShell: $env:AI_DOCKER_TARGET="dev"; docker compose up --build
+      #   CMD:        set AI_DOCKER_TARGET=dev && docker compose up --build
+      target: ${AI_DOCKER_TARGET:-prod}
+
     container_name: agro_ai_service
     restart: unless-stopped
 
+    # Local secrets file (DO NOT COMMIT)
     env_file:
-      - ai-service/.env
+      - ai_service/.env
 
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
 
     ports:
       - "8001:8001"
+
+    # (Optional) Extra safety if you want Compose-level checks too
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -f http://127.0.0.1:8001/health || exit 1"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+    #   start_period: 10s
+
 
   # ------------------------------------------------
   # PostgreSQL
@@ -65,12 +106,23 @@ services:
     image: postgres:16
     container_name: agro_postgres
     restart: unless-stopped
+
     environment:
       POSTGRES_USER: agro
       POSTGRES_PASSWORD: agro123
       POSTGRES_DB: agroconnect
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+    # Healthcheck enables "depends_on: condition: service_healthy"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
 
   # ------------------------------------------------
   # Redis
@@ -79,9 +131,20 @@ services:
     image: redis:7
     container_name: agro_redis
     restart: unless-stopped
+
     command: redis-server --appendonly yes
+
     volumes:
       - redis_data:/data
+
+    # Healthcheck enables "depends_on: condition: service_healthy"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
 
   # ------------------------------------------------
   # MinIO (S3-compatible storage)
@@ -89,19 +152,24 @@ services:
   minio:
     image: minio/minio
     container_name: agro_minio
-    command: server /data --console-address ":9001"
     restart: unless-stopped
+
+    command: server /data --console-address ":9001"
+
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+
     ports:
       - "9000:9000"
       - "9001:9001"
+
     volumes:
       - minio_data:/data
 
+
 # ------------------------------------------------
-# Volumes
+# Named volumes
 # ------------------------------------------------
 volumes:
   postgres_data:
