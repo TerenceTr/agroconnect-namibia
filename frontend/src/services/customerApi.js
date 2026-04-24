@@ -769,21 +769,51 @@ function buildCheckoutFormData(payload = {}) {
 export async function fetchPublicHomepage(options = {}) {
   const limit = toPositiveInt(options.limit, DEFAULT_HOMEPAGE_PRODUCT_LIMIT);
 
+  // --------------------------------------------------------------------------
+  // Primary source for the public StartScreen.
+  // --------------------------------------------------------------------------
+  // Use the lightweight cached public summary endpoint first:
+  //   GET /api/public/marketplace-summary
+  //
+  // This avoids repeatedly loading the heavier:
+  //   GET /api/products/homepage
+  //
+  // The older homepage/products endpoints remain as fallbacks only, so the
+  // public page still works if the new summary endpoint is temporarily
+  // unavailable during development.
+  // --------------------------------------------------------------------------
+  const publicSummaryParams = { limit };
+
+  if (options.refresh || options.forceRefresh) {
+    publicSummaryParams.refresh = 1;
+  }
+
   try {
-    const response = await api.get('/products/homepage', { params: { limit } });
-    const payload = extractData(response);
-    return normalizeHomepagePayload(payload);
-  } catch (error) {
-    const fallbackResponse = await api.get('/products', {
-      params: {
-        limit,
-        include_inactive: false,
-      },
+    const response = await api.get('/public/marketplace-summary', {
+      params: publicSummaryParams,
     });
 
-    const fallbackPayload = extractData(fallbackResponse);
-    const visibleProducts = filterCustomerVisibleProducts(asArray(fallbackPayload));
-    return normalizeHomepagePayload({}, visibleProducts);
+    const payload = extractData(response);
+    return normalizeHomepagePayload(payload);
+  } catch (primaryError) {
+    // Fallback 1: legacy homepage endpoint.
+    try {
+      const response = await api.get('/products/homepage', { params: { limit } });
+      const payload = extractData(response);
+      return normalizeHomepagePayload(payload);
+    } catch (homepageError) {
+      // Fallback 2: plain product list, then derive homepage sections client-side.
+      const fallbackResponse = await api.get('/products', {
+        params: {
+          limit,
+          include_inactive: false,
+        },
+      });
+
+      const fallbackPayload = extractData(fallbackResponse);
+      const visibleProducts = filterCustomerVisibleProducts(asArray(fallbackPayload));
+      return normalizeHomepagePayload({}, visibleProducts);
+    }
   }
 }
 
