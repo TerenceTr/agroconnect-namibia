@@ -766,56 +766,156 @@ function buildCheckoutFormData(payload = {}) {
 // ----------------------------------------------------------------------------
 // Public homepage / marketplace APIs
 // ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Public homepage request de-duplication/cache
+// -----------------------------------------------------------------------------
+// FILE ROLE:
+//   Prevent repeated public marketplace-summary requests during normal rendering.
+//
+// WHY THIS EXISTS:
+//   React development mode and multiple homepage helper functions can request
+//   the same public homepage payload more than once. This cache keeps the public
+//   page responsive and avoids flooding Flask logs with repeated:
+//
+//     GET /api/public/marketplace-summary
+//
+// REFRESH RULE:
+//   options.refresh or options.forceRefresh bypasses this cache.
+// -----------------------------------------------------------------------------
+const PUBLIC_HOMEPAGE_CACHE_TTL_MS = 60 * 1000;
+
+let publicHomepageCache = null;
+let publicHomepageInFlight = null;
+
+function getPublicHomepageCacheKey(limit) {
+  return `public-homepage:limit:${limit}`;
+}
+
+function readPublicHomepageCache(cacheKey) {
+  if (!publicHomepageCache) return null;
+  if (publicHomepageCache.key !== cacheKey) return null;
+  if (Date.now() > publicHomepageCache.expiresAt) return null;
+
+  return publicHomepageCache.payload;
+}
+
+function writePublicHomepageCache(cacheKey, payload) {
+  publicHomepageCache = {
+    key: cacheKey,
+    payload,
+    expiresAt: Date.now() + PUBLIC_HOMEPAGE_CACHE_TTL_MS,
+  };
+
+  return payload;
+}
+
+function hasUsefulHomepagePayload(payload) {
+  return Boolean(
+    asArray(payload?.categories).length ||
+      asArray(payload?.featured_products).length ||
+      asArray(payload?.top_products).length ||
+      asArray(payload?.latest_products).length ||
+      asArray(payload?.top_farmers).length ||
+      asArray(payload?.products).length
+  );
+}
+
+function maybeWritePublicHomepageCache(cacheKey, payload) {
+  if (!hasUsefulHomepagePayload(payload)) {
+    return payload;
+  }
+
+  return writePublicHomepageCache(cacheKey, payload);
+}
+
 export async function fetchPublicHomepage(options = {}) {
   const limit = toPositiveInt(options.limit, DEFAULT_HOMEPAGE_PRODUCT_LIMIT);
+  const shouldRefresh = Boolean(options.refresh || options.forceRefresh);
+  const cacheKey = getPublicHomepageCacheKey(limit);
 
-  // --------------------------------------------------------------------------
-  // Primary source for the public StartScreen.
-  // --------------------------------------------------------------------------
-  // Use the lightweight cached public summary endpoint first:
-  //   GET /api/public/marketplace-summary
-  //
-  // This avoids repeatedly loading the heavier:
-  //   GET /api/products/homepage
-  //
-  // The older homepage/products endpoints remain as fallbacks only, so the
-  // public page still works if the new summary endpoint is temporarily
-  // unavailable during development.
-  // --------------------------------------------------------------------------
-  const publicSummaryParams = { limit };
+  // Return cached homepage data when it is still fresh.
+  if (!shouldRefresh) {
+    const cachedPayload = readPublicHomepageCache(cacheKey);
 
-  if (options.refresh || options.forceRefresh) {
-    publicSummaryParams.refresh = 1;
+    if (cachedPayload) {
+      return cachedPayload;
+    }
+
+    // Reuse the same pending request if another caller already started it.
+    if (publicHomepageInFlight?.key === cacheKey && publicHomepageInFlight?.promise) {
+      return publicHomepageInFlight.promise;
+    }
+  }
+
+  const requestPromise = (async () => {
+    const publicSummaryParams = { limit };
+
+    if (shouldRefresh) {
+      publicSummaryParams.refresh = 1;
+    }
+
+    try {
+      const response = await api.get('/public/marketplace-summary', {
+        params: publicSummaryParams,
+      });
+
+      const payload = normalizeHomepagePayload(extractData(response));
+
+      if (!shouldRefresh) {
+        return maybeWritePublicHomepageCache(cacheKey, payload);
+      }
+
+      return payload;
+    } catch (primaryError) {
+      try {
+        const response = await api.get('/products/homepage', {
+          params: { limit },
+        });
+
+        const payload = normalizeHomepagePayload(extractData(response));
+
+        if (!shouldRefresh) {
+          return maybeWritePublicHomepageCache(cacheKey, payload);
+        }
+
+        return payload;
+      } catch (homepageError) {
+        const fallbackResponse = await api.get('/products', {
+          params: {
+            limit,
+            include_inactive: false,
+          },
+        });
+
+        const fallbackPayload = extractData(fallbackResponse);
+        const visibleProducts = filterCustomerVisibleProducts(asArray(fallbackPayload));
+        const payload = normalizeHomepagePayload({}, visibleProducts);
+
+        if (!shouldRefresh) {
+          return maybeWritePublicHomepageCache(cacheKey, payload);
+        }
+
+        return payload;
+      }
+    }
+  })();
+
+  if (!shouldRefresh) {
+    publicHomepageInFlight = {
+      key: cacheKey,
+      promise: requestPromise,
+    };
   }
 
   try {
-    const response = await api.get('/public/marketplace-summary', {
-      params: publicSummaryParams,
-    });
-
-    const payload = extractData(response);
-    return normalizeHomepagePayload(payload);
-  } catch (primaryError) {
-    // Fallback 1: legacy homepage endpoint.
-    try {
-      const response = await api.get('/products/homepage', { params: { limit } });
-      const payload = extractData(response);
-      return normalizeHomepagePayload(payload);
-    } catch (homepageError) {
-      // Fallback 2: plain product list, then derive homepage sections client-side.
-      const fallbackResponse = await api.get('/products', {
-        params: {
-          limit,
-          include_inactive: false,
-        },
-      });
-
-      const fallbackPayload = extractData(fallbackResponse);
-      const visibleProducts = filterCustomerVisibleProducts(asArray(fallbackPayload));
-      return normalizeHomepagePayload({}, visibleProducts);
+    return await requestPromise;
+  } finally {
+    if (publicHomepageInFlight?.promise === requestPromise) {
+      publicHomepageInFlight = null;
     }
   }
 }
+
 
 export async function fetchPublicProducts(options = {}) {
   try {
