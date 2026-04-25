@@ -928,7 +928,7 @@ export default function OrderHistory({ orders = [], loading = false, onRefresh }
                               </div>
                             )}
                           </div>
-                          {eftSelected ? (
+                          {eftSelected && !proofUrl ? (
                             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
                               <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
                                 <FileText className="h-4 w-4" />
