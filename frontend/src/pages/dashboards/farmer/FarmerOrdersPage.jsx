@@ -531,6 +531,59 @@ function checkoutStageLabel(stageRaw) {
   return s ? titleCaseWords(s) : "—";
 }
 
+function paymentKeyForOrder(orderLike) {
+  return statusKey(
+    firstDefined(
+      orderLike?.payment_visibility_status,
+      orderLike?.payment_status_badge,
+      orderLike?.payment_status
+    ),
+    "unpaid"
+  );
+}
+
+function deliveryKeyForOrder(orderLike) {
+  return statusKey(
+    firstDefined(
+      orderLike?.farmer_delivery_status,
+      orderLike?.delivery_status,
+      orderLike?.item_delivery_status
+    ),
+    ""
+  );
+}
+
+function farmerLifecycleStatusForDisplay(orderLike, fallbackStatus = "pending") {
+  const baseStatus = statusKey(fallbackStatus, "pending");
+  const paymentKey = paymentKeyForOrder(orderLike);
+  const deliveryKey = deliveryKeyForOrder(orderLike);
+
+  if (baseStatus === "cancelled") return "cancelled";
+  if (deliveryKey === "delivered" || deliveryKey === "completed") return "completed";
+  if (deliveryKey === "in_transit") return "in_transit";
+  if (paymentKey === "paid") return "payment_verified";
+
+  return baseStatus;
+}
+
+function deliveryFeeStatusLabel(orderLike) {
+  const paymentKey = paymentKeyForOrder(orderLike);
+
+  if (paymentKey === "paid") {
+    return "Payment verified";
+  }
+
+  const rawFeeStatus = firstDefined(orderLike?.delivery_fee_status, "");
+  const s = safeStr(rawFeeStatus, "").trim();
+
+  return s ? titleCaseWords(s) : "";
+}
+
+function deliveryFeeStatusTone(orderLike) {
+  return paymentKeyForOrder(orderLike) === "paid" ? "emerald" : "slate";
+}
+
+
 function maskAccountNumber(value) {
   const s = safeStr(value, "").replace(/\s+/g, "");
   if (!s) return "—";
@@ -604,11 +657,18 @@ function toneForPayment(v) {
 
 function toneForOrderStatus(v) {
   const s = statusKey(v, "");
+
   if (s === "completed") return "emerald";
+  if (s === "payment_verified") return "emerald";
+  if (s === "in_transit") return "sky";
+  if (s === "preparing") return "indigo";
+  if (s === "partial") return "amber";
   if (s === "cancelled") return "rose";
   if (s === "pending") return "amber";
+
   return "slate";
 }
+
 
 function toneForDelivery(v) {
   const s = statusKey(v, "");
@@ -1543,6 +1603,7 @@ export default function FarmerOrdersPage() {
                             const total = safeNumber(firstDefined(o?.total, 0), 0);
     
                             const statusRaw = firstDefined(o?.status, "—");
+                            const displayStatusRaw = farmerLifecycleStatusForDisplay(o, statusRaw);
                             const payRaw = firstDefined(
                               o?.payment_visibility_status,
                               o?.payment_status_badge,
@@ -1613,7 +1674,7 @@ export default function FarmerOrdersPage() {
                                 </td>
     
                                 <td className="px-3 py-3">
-                                  <Badge tone={toneForOrderStatus(statusRaw)}>{statusText}</Badge>
+                                  <Badge tone={toneForOrderStatus(displayStatusRaw)}>{statusText}</Badge>
                                 </td>
     
                                 <td className="px-3 py-3">
@@ -1657,6 +1718,7 @@ export default function FarmerOrdersPage() {
                         const buyerAddress = safeStr(firstDefined(o?.buyer_address, o?.delivery_address, ""));
                         const itemsPreview = safeStr(firstDefined(o?.itemsPreview, ""));
                         const statusRaw = firstDefined(o?.status, "—");
+                        const displayStatusRaw = farmerLifecycleStatusForDisplay(o, statusRaw);
                         const payRaw = firstDefined(
                           o?.payment_visibility_status,
                           o?.payment_status_badge,
@@ -1700,7 +1762,7 @@ export default function FarmerOrdersPage() {
                             </div>
     
                             <div className="mt-3 flex flex-wrap gap-2">
-                              <Badge tone={toneForOrderStatus(statusRaw)}>{statusText}</Badge>
+                              <Badge tone={toneForOrderStatus(displayStatusRaw)}>{statusText}</Badge>
                               <Badge tone={toneForPayment(payRaw)}>{payText}</Badge>
                               <Badge tone={toneForDelivery(deliveryRaw)}>{deliveryText}</Badge>
                             </div>
@@ -1881,9 +1943,9 @@ export default function FarmerOrdersPage() {
                         <Badge tone={selectedCheckoutReady ? "emerald" : "amber"}>
                           {checkoutStageLabel(selectedView.checkout_stage)}
                         </Badge>
-                        {selectedView.delivery_fee_status ? (
-                          <Badge tone="slate">
-                            Fee status: {titleCaseWords(selectedView.delivery_fee_status)}
+                        {deliveryFeeStatusLabel(selectedView) ? (
+                          <Badge tone={deliveryFeeStatusTone(selectedView)}>
+                            Fee status: {deliveryFeeStatusLabel(selectedView)}
                           </Badge>
                         ) : null}
                       </div>

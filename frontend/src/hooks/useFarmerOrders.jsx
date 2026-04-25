@@ -1335,11 +1335,30 @@ export function normalizeOrderForFarmer(raw, farmerId = null) {
   const paymentStatusBadge = paymentVisibilityStatus || paymentStatus || "—";
 
   // IMPORTANT:
-  // Show completed in farmer UI once farmer payment scope is confirmed paid,
-  // unless the order was cancelled.
+  // Payment and delivery are different lifecycle steps.
+  //
+  // Correct farmer-facing status flow:
+  //   payment pending + proof submitted  -> pending / proof submitted
+  //   payment paid + delivery pending    -> payment_verified
+  //   payment paid + delivery in transit -> in_transit
+  //   payment paid + delivery delivered  -> completed
+  //
+  // This prevents the table/drawer from showing "Completed" while the delivery
+  // is still only "Pending" or "In Transit".
   let effectiveStatus = safeBadgeText(firstDefined(r.status, n.status, "pending"), "pending");
-  if (paymentVisibilityStatus === "paid" && effectiveStatus !== "cancelled") {
-    effectiveStatus = "completed";
+  const scopedPaymentKey = safeBadgeText(firstDefined(paymentVisibilityStatus, paymentStatus), "unpaid");
+  const scopedDeliveryKey = safeBadgeText(scopedDeliveryStatus, "pending");
+
+  if (effectiveStatus !== "cancelled") {
+    if (scopedDeliveryKey === "delivered" || scopedDeliveryKey === "completed") {
+      effectiveStatus = "completed";
+    } else if (scopedDeliveryKey === "in_transit") {
+      effectiveStatus = "in_transit";
+    } else if (scopedPaymentKey === "paid") {
+      effectiveStatus = "payment_verified";
+    } else if (scopedDeliveryKey === "preparing" || scopedDeliveryKey === "partial") {
+      effectiveStatus = scopedDeliveryKey;
+    }
   }
 
   return {
