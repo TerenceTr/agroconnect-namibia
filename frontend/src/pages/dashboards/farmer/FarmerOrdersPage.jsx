@@ -545,8 +545,11 @@ function paymentKeyForOrder(orderLike) {
 function deliveryKeyForOrder(orderLike) {
   return statusKey(
     firstDefined(
-      orderLike?.farmer_delivery_status,
+      // Prefer the delivery status that is shown in the farmer table/drawer.
+      // This prevents a stale/root "completed" status from overriding an
+      // actual visible "in_transit" delivery state.
       orderLike?.delivery_status,
+      orderLike?.farmer_delivery_status,
       orderLike?.item_delivery_status
     ),
     ""
